@@ -219,6 +219,18 @@ TEST_F(TestUtil, getNetworkAddress)
     address = getNetworkID(AF_INET6, "fe80::201:6cff:fe80:228", 64);
     EXPECT_EQ("fe80::", address);
 }
+TEST_F(TestUtil, InterfaceToUbootEthAddr)
+{
+    EXPECT_EQ(std::nullopt, interfaceToUbootEthAddr("et"));
+    EXPECT_EQ(std::nullopt, interfaceToUbootEthAddr("eth"));
+    EXPECT_EQ(std::nullopt, interfaceToUbootEthAddr("sit0"));
+    EXPECT_EQ(std::nullopt, interfaceToUbootEthAddr("ethh0"));
+    EXPECT_EQ(std::nullopt, interfaceToUbootEthAddr("eth0h"));
+    EXPECT_EQ("ethaddr", interfaceToUbootEthAddr("eth0"));
+    EXPECT_EQ("eth1addr", interfaceToUbootEthAddr("eth1"));
+    EXPECT_EQ("eth5addr", interfaceToUbootEthAddr("eth5"));
+    EXPECT_EQ("eth28addr", interfaceToUbootEthAddr("eth28"));
+}
 
 TEST_F(TestUtil, CopyFromTooSmall)
 {
