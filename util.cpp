@@ -9,6 +9,8 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <experimental/filesystem>
 #include <iostream>
 #include <list>
@@ -441,6 +443,32 @@ void deleteInterface(const std::string& intf)
     }
 }
 
+std::optional<std::string> interfaceToUbootEthAddr(const char* intf)
+{
+    constexpr char ethPrefix[] = "eth";
+    constexpr size_t ethPrefixLen = sizeof(ethPrefix) - 1;
+    if (strncmp(ethPrefix, intf, ethPrefixLen) != 0)
+    {
+        return std::nullopt;
+    }
+    const auto intfSuffix = intf + ethPrefixLen;
+    if (intfSuffix[0] == '\0')
+    {
+        return std::nullopt;
+    }
+    char* end;
+    unsigned long idx = strtoul(intfSuffix, &end, 10);
+    if (end[0] != '\0')
+    {
+        return std::nullopt;
+    }
+    if (idx == 0)
+    {
+        return "ethaddr";
+    }
+    return "eth" + std::to_string(idx) + "addr";
+}
+
 bool getDHCPValue(const std::string& confDir, const std::string& intf)
 {
     bool dhcp = false;
@@ -550,7 +578,8 @@ constexpr auto invNetworkIntf =
     "xyz.openbmc_project.Inventory.Item.NetworkInterface";
 constexpr auto invRoot = "/xyz/openbmc_project/inventory";
 
-ether_addr getfromInventory(sdbusplus::bus::bus& bus)
+ether_addr getfromInventory(sdbusplus::bus::bus& bus,
+                            const std::string& intfName)
 {
     std::vector<DbusInterface> interfaces;
     interfaces.emplace_back(invNetworkIntf);
@@ -579,10 +608,37 @@ ether_addr getfromInventory(sdbusplus::bus::bus& bus)
         elog<InternalFailure>();
     }
 
-    // It is expected that only one object has implemented this interface.
+    DbusObjectPath objPath;
+    DbusService service;
 
-    auto objPath = objectTree.begin()->first;
-    auto service = objectTree.begin()->second.begin()->first;
+    if (1 == objectTree.size())
+    {
+        objPath = objectTree.begin()->first;
+        service = objectTree.begin()->second.begin()->first;
+    }
+    else
+    {
+        // If there are more than 2 objects, object path must contain the
+        // interface name
+        for (auto const& object : objectTree)
+        {
+            log<level::INFO>("interface", entry("INT=%s", intfName.c_str()));
+            log<level::INFO>("object", entry("OBJ=%s", object.first.c_str()));
+            if (std::string::npos != object.first.find(intfName))
+            {
+                objPath = object.first;
+                service = object.second.begin()->first;
+                break;
+            }
+        }
+
+        if (objPath.empty())
+        {
+            log<level::ERR>("Can't find the object for the interface",
+                            entry("intfName=%s", intfName.c_str()));
+            elog<InternalFailure>();
+        }
+    }
 
     auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
                                       propIntf, methodGet);

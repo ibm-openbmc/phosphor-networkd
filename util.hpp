@@ -2,12 +2,14 @@
 
 #include "config.h"
 
+#include "ethernet_interface.hpp"
 #include "types.hpp"
 
 #include <netinet/ether.h>
 #include <unistd.h>
 
 #include <cstring>
+#include <optional>
 #include <sdbusplus/bus.hpp>
 #include <string>
 #include <string_view>
@@ -28,8 +30,10 @@ namespace mac_address
 
 /** @brief gets the MAC address from the Inventory.
  *  @param[in] bus - DBUS Bus Object.
+ *  @param[in] intfName - Interface name
  */
-ether_addr getfromInventory(sdbusplus::bus::bus& bus);
+ether_addr getfromInventory(sdbusplus::bus::bus& bus,
+                            const std::string& intfName);
 
 /** @brief Converts the given mac address into byte form
  *  @param[in] str - The mac address in human readable form
@@ -148,6 +152,14 @@ InterfaceList getInterfaces();
  *  @param[in] intf - interface name.
  */
 void deleteInterface(const std::string& intf);
+
+/** @brief Converts the interface name into a u-boot environment
+ *         variable that would hold its ethernet address.
+ *
+ *  @param[in] intf - interface name
+ *  @return The name of th environment key
+ */
+std::optional<std::string> interfaceToUbootEthAddr(const char* intf);
 
 /** @brief read the DHCP value from the configuration file
  *  @param[in] confDir - Network configuration directory.
