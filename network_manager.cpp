@@ -224,7 +224,13 @@ void Manager::restartSystemdUnit(const std::string& unit)
         auto method = bus.new_method_call(SYSTEMD_BUSNAME, SYSTEMD_PATH,
                                           SYSTEMD_INTERFACE, "ResetFailedUnit");
         method.append(unit);
-        bus.call_noreply(method);
+
+        // See openbmc/phostphor-state-manager#4
+        // This call is made around the same time systemd is mounting the
+        // host filesystems. This can cause a delay in D-bus calls to systemd.
+        // Increase the timeout from the default 25 seconds to 60 seconds to
+        // workaround this.
+        bus.call_noreply(method, (60 * 1000000L));
     }
     catch (const sdbusplus::exception::SdBusError& ex)
     {
