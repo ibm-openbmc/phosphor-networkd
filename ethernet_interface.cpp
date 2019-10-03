@@ -709,9 +709,8 @@ void EthernetInterface::writeConfigurationFile()
     }
 
     stream << "LinkLocalAddressing=" + linkLocalConf + "\n";
+    stream << "IPv6AcceptRA=false\n";
 
-    stream << std::boolalpha
-           << "IPv6AcceptRA=" << EthernetInterfaceIntf::iPv6AcceptRA() << "\n";
 
     // Add the VLAN entry
     for (const auto& intf : vlanInterfaces)
