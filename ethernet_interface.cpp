@@ -48,7 +48,13 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
     std::replace(intfName.begin(), intfName.end(), '_', '.');
     interfaceName(intfName);
     EthernetInterfaceIntf::dHCPEnabled(dhcpEnabled);
-    MacAddressIntf::mACAddress(getMACAddress(intfName));
+    EthernetInterfaceIntf::iPv6AcceptRA(getIPv6AcceptRAFromConf());
+    // Don't get the mac address from the system as the mac address
+    // would be same as parent interface.
+    if (intfName.find(".") == std::string::npos)
+    {
+        MacAddressIntf::mACAddress(getMACAddress(intfName));
+    }
     EthernetInterfaceIntf::nTPServers(getNTPServersFromConf());
     EthernetInterfaceIntf::nameservers(getNameServerFromConf());
 
