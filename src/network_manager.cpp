@@ -103,6 +103,7 @@ bool Manager::createDefaultNetworkFiles(bool force)
     {
         log<level::ERR>("Unable to create the default network file");
     }
+
     return isCreated;
 }
 
@@ -211,7 +212,6 @@ void Manager::writeToConfigurationFile()
     {
         intf.second->writeConfigurationFile();
     }
-    restartTimers();
 }
 
 #ifdef SYNC_MAC_FROM_INVENTORY
