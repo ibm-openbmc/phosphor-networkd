@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vector>
+#include <span>
 
 namespace phosphor
 {
@@ -24,7 +24,7 @@ constexpr auto NONE = 0;
  * @returns 0 on success and negative value for failure.
  */
 int sendOemCommand(int ifindex, int package, int channel,
-                   const std::vector<unsigned char>& payload);
+                   std::span<const unsigned char> payload);
 
 /* @brief  This function will ask underlying NCSI driver
  *         to set a specific  package or package/channel

@@ -89,11 +89,12 @@ int main(int argc, char** argv)
     auto payloadStr = (options)["oem-payload"];
     if (!payloadStr.empty())
     {
-        std::string byte(2, 0);
+        std::string byte(2, '\0');
         std::vector<unsigned char> payload;
 
         if (payloadStr.size() % 2)
-            payloadStr.insert(payloadStr.begin(), '0');
+            exitWithError("Payload invalid: specify two hex digits per byte.",
+                          argv);
 
         // Parse the payload string (e.g. "000001572100") to byte data
         for (unsigned int i = 1; i < payloadStr.size(); i += 2)
@@ -121,7 +122,9 @@ int main(int argc, char** argv)
             exitWithError("Package not specified.", argv);
         }
 
-        return ncsi::sendOemCommand(indexInt, packageInt, channelInt, payload);
+        return ncsi::sendOemCommand(
+            indexInt, packageInt, channelInt,
+            std::span<const unsigned char>(payload.begin(), payload.end()));
     }
     else if ((options)["set"] == "true")
     {

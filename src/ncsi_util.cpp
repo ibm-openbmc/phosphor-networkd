@@ -1,5 +1,6 @@
 #include "ncsi_util.hpp"
 
+#include <fmt/format.h>
 #include <linux/ncsi.h>
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/genl.h>
@@ -28,21 +29,18 @@ namespace internal
 
 struct NCSIPacketHeader
 {
-    __u8 MCID;
-    __u8 revision;
-    __u8 reserved;
-    __u8 id;
-    __u8 type;
-    __u8 channel;
-    __be16 length;
-    __be32 rsvd[2];
+    uint8_t MCID;
+    uint8_t revision;
+    uint8_t reserved;
+    uint8_t id;
+    uint8_t type;
+    uint8_t channel;
+    uint16_t length;
+    uint32_t rsvd[2];
 };
 
 class Command
 {
-  private:
-    static const std::vector<unsigned char> emptyPayload;
-
   public:
     Command() = delete;
     ~Command() = default;
@@ -50,8 +48,9 @@ class Command
     Command& operator=(const Command&) = delete;
     Command(Command&&) = default;
     Command& operator=(Command&&) = default;
-    Command(int c, int nc = DEFAULT_VALUE,
-            const std::vector<unsigned char>& p = emptyPayload) :
+    Command(
+        int c, int nc = DEFAULT_VALUE,
+        std::span<const unsigned char> p = std::span<const unsigned char>()) :
         cmd(c),
         ncsi_cmd(nc), payload(p)
     {
@@ -59,10 +58,8 @@ class Command
 
     int cmd;
     int ncsi_cmd;
-    const std::vector<unsigned char>& payload;
+    std::span<const unsigned char> payload;
 };
-
-const std::vector<unsigned char> Command::emptyPayload;
 
 using nlMsgPtr = std::unique_ptr<nl_msg, decltype(&::nlmsg_free)>;
 using nlSocketPtr = std::unique_ptr<nl_sock, decltype(&::nl_socket_free)>;
@@ -218,13 +215,12 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
 
 CallBack sendCallBack = [](struct nl_msg* msg, void* arg) {
     using namespace phosphor::network::ncsi;
-    constexpr auto ETHERNET_HEADER_SIZE = 16;
     auto nlh = nlmsg_hdr(msg);
     struct nlattr* tb[NCSI_ATTR_MAX + 1] = {nullptr};
     static struct nla_policy ncsiPolicy[NCSI_ATTR_MAX + 1] = {
-        {type : NLA_UNSPEC}, {type : NLA_U32}, {type : NLA_NESTED},
-        {type : NLA_U32},    {type : NLA_U32}, {type : NLA_BINARY},
-        {type : NLA_FLAG},   {type : NLA_U32}, {type : NLA_U32},
+        {NLA_UNSPEC, 0, 0}, {NLA_U32, 0, 0}, {NLA_NESTED, 0, 0},
+        {NLA_U32, 0, 0},    {NLA_U32, 0, 0}, {NLA_BINARY, 0, 0},
+        {NLA_FLAG, 0, 0},   {NLA_U32, 0, 0}, {NLA_U32, 0, 0},
     };
 
     *(int*)arg = 0;
@@ -236,29 +232,14 @@ CallBack sendCallBack = [](struct nl_msg* msg, void* arg) {
         return ret;
     }
 
-    auto data_len = nla_len(tb[NCSI_ATTR_DATA]) - ETHERNET_HEADER_SIZE;
+    auto data_len = nla_len(tb[NCSI_ATTR_DATA]) - sizeof(NCSIPacketHeader);
     unsigned char* data =
-        (unsigned char*)nla_data(tb[NCSI_ATTR_DATA]) + ETHERNET_HEADER_SIZE;
+        (unsigned char*)nla_data(tb[NCSI_ATTR_DATA]) + sizeof(NCSIPacketHeader);
+    auto s = std::span<const unsigned char>(data, data_len);
 
     // Dump the response to stdout. Enhancement: option to save response data
     std::cout << "Response : " << std::dec << data_len << " bytes" << std::endl;
-    for (auto i = 0; i < data_len; ++i)
-    {
-        if (i)
-        {
-            if (!(i % 8))
-            {
-                std::cout << std::endl;
-            }
-            else
-            {
-                std::cout << " ";
-            }
-        }
-        std::cout << std::hex << std::setfill('0') << std::setw(2)
-                  << (int)data[i];
-    }
-
+    fmt::print("{:02x}", fmt::join(s.begin(), s.end(), " "));
     std::cout << std::endl;
 
     return 0;
@@ -394,7 +375,7 @@ int applyCmd(int ifindex, const Command& cmd, int package = DEFAULT_VALUE,
 } // namespace internal
 
 int sendOemCommand(int ifindex, int package, int channel,
-                   const std::vector<unsigned char>& payload)
+                   std::span<const unsigned char> payload)
 {
     constexpr auto cmd = 0x50;
 
