@@ -219,15 +219,11 @@ void HypNetworkMgr::createIfObjects()
 {
     setBIOSTableAttrs();
 
-    if (intfCount == 1)
-    {
-        // create eth0 object
-        log<level::INFO>("Creating eth0 object");
-        interfaces.emplace(
-            "eth0", std::make_shared<phosphor::network::HypEthInterface>(
-                        bus, (objectPath + "/eth0").c_str(), "eth0", *this));
-    }
-    else if (intfCount == 2)
+    // The hypervisor can support maximum of
+    // 2 ethernet interfaces. Both eth0/1 objects are
+    // created during init time to support the static
+    // network configurations on the both.
+    if (intfCount == 1 || intfCount == 2)
     {
         // create eth0 and eth1 objects
         log<level::INFO>("Creating eth0 and eth1 objects");
