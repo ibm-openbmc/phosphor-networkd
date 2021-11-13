@@ -166,10 +166,19 @@ void HypEthInterface::createIPAddressObjects()
             if (ipType.find("Static") != std::string::npos)
             {
                 ipOrigin = IP::AddressOrigin::Static;
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::none);
             }
             else if (ipType.find("DHCP") != std::string::npos)
             {
                 ipOrigin = IP::AddressOrigin::DHCP;
+                if (protocol == "ipv4")
+                {
+                    HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                }
+                else if (protocol == "ipv6")
+                {
+                    HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v6);
+                }
             }
             else
             {
