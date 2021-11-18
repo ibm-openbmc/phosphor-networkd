@@ -21,6 +21,54 @@ constexpr char biosIntType[] =
 constexpr char biosEnumType[] =
     "xyz.openbmc_project.BIOSConfig.Manager.AttributeType.Enumeration";
 
+void HypEthInterface::dhcpCallbackMethod()
+{
+    auto biosTableAttrs = manager.getBIOSTableAttrs();
+    std::shared_ptr<phosphor::network::HypIPAddress> ipAddrObj = NULL;
+
+    for (const auto& ipAddr : addrs)
+    {
+        ipAddrObj = ipAddr.second;
+
+        if (ipAddrObj == nullptr)
+        {
+            log<level::ERR>("Problem in retrieving the ip address object");
+            return;
+        }
+        std::string address;
+        std::string gateway;
+        uint8_t prefixLenUint;
+
+        std::string hypPrefix = ipAddrObj->getHypPrefix();
+        if (hypPrefix.empty())
+        {
+            log<level::ERR>(
+                "Problem in retrieving the bios table attribute prefix");
+            return;
+        }
+        for (const auto& biosAttr : biosTableAttrs)
+        {
+            if (biosAttr.first == hypPrefix + "ipaddr")
+            {
+                address = std::get<std::string>(biosAttr.second);
+            }
+            if (biosAttr.first == hypPrefix + "gateway")
+            {
+                gateway = std::get<std::string>(biosAttr.second);
+            }
+            if (biosAttr.first == hypPrefix + "prefix_length")
+            {
+                prefixLenUint =
+                    static_cast<uint8_t>(std::get<int64_t>(biosAttr.second));
+            }
+        }
+        ipAddrObj->address(address);
+        ipAddrObj->gateway(gateway);
+        ipAddrObj->prefixLength(prefixLenUint);
+        break;
+    }
+}
+
 std::shared_ptr<phosphor::network::HypIPAddress>
     HypEthInterface::getIPAddrObject(std::string attrName,
                                      std::string oldIpAddr = "")
@@ -346,12 +394,14 @@ HypEthernetIntf::DHCPConf
         {
             auto ipObj = itr.second;
             ipObj->resetIPObjProps();
-            ipObj->resetBaseBiosTableAttrs();
             PendingAttributesType pendingAttributes;
             pendingAttributes.insert_or_assign(
                 ipObj->mapDbusToBiosAttr("origin"),
                 std::make_tuple(biosEnumType, "IPv4DHCP"));
             ipObj->updateBiosPendingAttrs(pendingAttributes);
+            log<level::INFO>("Updating the ip address properties");
+            dhcpCallbackMethod();
+            break;
         }
     }
     else
@@ -364,6 +414,9 @@ HypEthernetIntf::DHCPConf
                 ipObj->mapDbusToBiosAttr("origin"),
                 std::make_tuple(biosEnumType, "IPv4Static"));
             ipObj->updateBiosPendingAttrs(pendingAttributes);
+            ipObj->resetBaseBiosTableAttrs();
+            ipObj->resetIPObjProps();
+            break;
         }
     }
 
