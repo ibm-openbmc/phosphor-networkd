@@ -6,6 +6,14 @@ hyp_tests = [
   'hyp_ethernet_interface',
 ]
 
+hyp_test_src = declare_dependency(
+              sources: [
+                '../../../src/ibm/hypervisor-network-mgr-src/hyp_network_manager.cpp',
+                '../../../src/ibm/hypervisor-network-mgr-src/hyp_sys_config.cpp',
+                '../../../src/ibm/hypervisor-network-mgr-src/hyp_ip_interface.cpp',
+                '../../../src/ibm/hypervisor-network-mgr-src/hyp_ethernet_interface.cpp',
+                '../../../src/ibm/hypervisor-network-mgr-src/hyp_nw_config_serialize.cpp'])
+
 foreach t : hyp_tests
   test(
     t,
