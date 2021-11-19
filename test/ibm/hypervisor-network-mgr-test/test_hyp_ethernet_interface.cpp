@@ -15,12 +15,11 @@ class TestHypEthernetInterface : public testing::Test
   public:
     sdbusplus::bus::bus bus;
     HypNetworkMgr manager;
-    sdeventplus::Event event = sdeventplus::Event::get_default();
 
     MockHypEthernetInterface interface;
     TestHypEthernetInterface() :
         bus(sdbusplus::bus::new_default()),
-        manager(bus, event, "/xyz/openbmc_test/network/hypervisor"),
+        manager(bus, "/xyz/openbmc_test/network/hypervisor"),
         interface(makeInterface(bus, manager))
     {
         manager.setDefaultBIOSTableAttrsOnIntf("if0");
@@ -74,7 +73,7 @@ TEST_F(TestHypEthernetInterface, CheckIPAddress)
 
 TEST_F(TestHypEthernetInterface, AddIPAddress)
 {
-    IP::Protocol addressType = IP::Protocol::IPv4;
+    HypIP::Protocol addressType = HypIP::Protocol::IPv4;
     bool createip = interface.createIP(interface, "eth0", addressType,
                                        "10.10.10.10", 16, "10.10.10.1");
     if (createip)
@@ -85,7 +84,7 @@ TEST_F(TestHypEthernetInterface, AddIPAddress)
 
 TEST_F(TestHypEthernetInterface, AddMultipleAddress)
 {
-    IP::Protocol addressType = IP::Protocol::IPv4;
+    HypIP::Protocol addressType = HypIP::Protocol::IPv4;
     bool createip1 = interface.createIP(interface, "eth0", addressType,
                                         "10.10.10.10", 16, "10.10.10.1");
     if (createip1)
@@ -102,7 +101,7 @@ TEST_F(TestHypEthernetInterface, AddMultipleAddress)
 
 TEST_F(TestHypEthernetInterface, DeleteIPAddress)
 {
-    IP::Protocol addressType = IP::Protocol::IPv4;
+    HypIP::Protocol addressType = HypIP::Protocol::IPv4;
     bool createip = interface.createIP(interface, "eth0", addressType,
                                        "20.20.20.20", 16, "20.20.20.1");
     if (createip)
@@ -114,7 +113,7 @@ TEST_F(TestHypEthernetInterface, DeleteIPAddress)
 
 TEST_F(TestHypEthernetInterface, DeleteNonConfiguredIPAddr)
 {
-    IP::Protocol addressType = IP::Protocol::IPv4;
+    HypIP::Protocol addressType = HypIP::Protocol::IPv4;
     bool createip = interface.createIP(interface, "eth0", addressType,
                                        "20.20.20.20", 16, "20.20.20.1");
     if (createip)
