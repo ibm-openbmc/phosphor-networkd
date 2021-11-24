@@ -21,6 +21,137 @@ constexpr char biosIntType[] =
 constexpr char biosEnumType[] =
     "xyz.openbmc_project.BIOSConfig.Manager.AttributeType.Enumeration";
 
+biosTableRetAttrValueType
+    HypEthInterface::getAttrFromBiosTable(const std::string& attrName)
+{
+    constexpr auto BIOS_SERVICE = "xyz.openbmc_project.BIOSConfigManager";
+    constexpr auto BIOS_OBJPATH = "/xyz/openbmc_project/bios_config/manager";
+    constexpr auto BIOS_MGR_INTF = "xyz.openbmc_project.BIOSConfig.Manager";
+
+    try
+    {
+        using getAttrRetType =
+            std::tuple<std::string, std::variant<std::string, int64_t>,
+                       std::variant<std::string, int64_t>>;
+        getAttrRetType ip;
+        auto method = bus.new_method_call(BIOS_SERVICE, BIOS_OBJPATH,
+                                          BIOS_MGR_INTF, "GetAttribute");
+
+        method.append(attrName);
+
+        auto reply = bus.call(method);
+
+        std::string type;
+        std::variant<std::string, int64_t> currValue;
+        std::variant<std::string, int64_t> defValue;
+        reply.read(type, currValue, defValue);
+        return currValue;
+    }
+    catch (const sdbusplus::exception::SdBusError& ex)
+    {
+        log<level::ERR>("Failed to get the hostname from bios table",
+                        entry("ERR=%s", ex.what()));
+    }
+    return "";
+}
+
+void HypEthInterface::watchBaseBiosTable()
+{
+    auto BIOSAttrUpdate = [&](sdbusplus::message::message& m) {
+        std::map<std::string, std::variant<BiosBaseTableType>>
+            interfacesProperties;
+
+        std::string objName;
+        m.read(objName, interfacesProperties);
+
+        // Check if the property change signal is for BaseBIOSTable property
+        // If found, proceed; else, continue to listen
+        if (!interfacesProperties.contains("BaseBIOSTable"))
+        {
+            // Return & continue to listen
+            return;
+        }
+        log<level::INFO>("BaseBIOSTable - property changed");
+
+        // Check if the IP address has changed (i.e., if current ip address in
+        // the biosTableAttrs data member and ip address in bios table are
+        // different)
+        auto biosTableAttrs = manager.getBIOSTableAttrs();
+        for (const auto& i : biosTableAttrs)
+        {
+            if (i.first == "vmi_if0_ipv4_ipaddr" ||
+                i.first == "vmi_if1_ipv4_ipaddr")
+            {
+                std::string currIpAddr = std::get<std::string>(i.second);
+                if (currIpAddr.empty())
+                {
+                    log<level::INFO>("Current IP in biosAttrs copy is empty");
+                    return;
+                }
+
+                std::string ipAddr =
+                    std::get<std::string>(getAttrFromBiosTable(i.first));
+                if (ipAddr != currIpAddr)
+                {
+                    // Ip address has been updated. Check if it is dhcp.
+                    // This method was intended to watch the bios table
+                    // property change signal and update the dbus object
+                    // whenever the dhcp server has provided an
+                    // IP from different range. Because, in all other cases,
+                    // user configures ip that will be set in the dbus object,
+                    // followed by bios table updation. Only in this dhcp case,
+                    // the dbus will not be having the updated ip address which
+                    // is in bios table. This method is to sync the ip addresses
+                    // between the bios table & dbus object.
+                    std::string intf;
+                    if (i.first == "vmi_if0_ipv4_ipaddr")
+                    {
+                        intf = "if0";
+                    }
+                    else if (i.first == "vmi_if1_ipv4_ipaddr")
+                    {
+                        intf = "if1";
+                    }
+
+                    std::string dhcpEnabled = std::get<std::string>(
+                        getAttrFromBiosTable("vmi_" + intf + "_ipv4_method"));
+                    if (dhcpEnabled == "IPv4DHCP")
+                    {
+                        log<level::INFO>(
+                            "DHCP enabled. Updating respective dbus object");
+                        uint8_t prefixLen = static_cast<uint8_t>(
+                            std::get<int64_t>(getAttrFromBiosTable(
+                                "vmi_" + intf + "_ipv4_prefix_length")));
+                        std::string gateway =
+                            std::get<std::string>(getAttrFromBiosTable(
+                                "vmi_" + intf + "_ipv4_gateway"));
+                        for (auto addr : addrs)
+                        {
+                            if (addr.first == currIpAddr)
+                            {
+                                auto ipObj = addr.second;
+                                ipObj->address(ipAddr);
+                                ipObj->prefixLength(prefixLen);
+                                ipObj->gateway(gateway);
+                                break;
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+    };
+
+    phosphor::network::matchBIOSAttrUpdate = std::make_unique<
+        sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',arg0namespace='xyz.openbmc_project.BIOSConfig."
+        "Manager'",
+        BIOSAttrUpdate);
+}
+
 void HypEthInterface::dhcpCallbackMethod()
 {
     auto biosTableAttrs = manager.getBIOSTableAttrs();
@@ -37,7 +168,7 @@ void HypEthInterface::dhcpCallbackMethod()
         }
         std::string address;
         std::string gateway;
-        uint8_t prefixLenUint;
+        uint8_t prefixLenUint = 0;
 
         std::string hypPrefix = ipAddrObj->getHypPrefix();
         if (hypPrefix.empty())
