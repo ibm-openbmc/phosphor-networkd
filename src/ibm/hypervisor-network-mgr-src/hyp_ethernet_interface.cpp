@@ -49,7 +49,7 @@ biosTableRetAttrValueType
     }
     catch (const sdbusplus::exception::SdBusError& ex)
     {
-        log<level::ERR>("Failed to get the hostname from bios table",
+        log<level::ERR>("Failed to get the attribute value from bios table",
                         entry("ERR=%s", ex.what()));
     }
     return "";
@@ -57,7 +57,7 @@ biosTableRetAttrValueType
 
 void HypEthInterface::watchBaseBiosTable()
 {
-    auto BIOSAttrUpdate = [&](sdbusplus::message::message& m) {
+    auto BIOSAttrUpdate = [this](sdbusplus::message::message& m) {
         std::map<std::string, std::variant<BiosBaseTableType>>
             interfacesProperties;
 
@@ -76,71 +76,125 @@ void HypEthInterface::watchBaseBiosTable()
         // Check if the IP address has changed (i.e., if current ip address in
         // the biosTableAttrs data member and ip address in bios table are
         // different)
-        auto biosTableAttrs = manager.getBIOSTableAttrs();
-        for (const auto& i : biosTableAttrs)
+
+        // the no. of interface supported is two
+        constexpr auto MAX_INTF_SUPPORTED = 2;
+        for (auto i = 0; i < MAX_INTF_SUPPORTED; i++)
         {
-            if (i.first == "vmi_if0_ipv4_ipaddr" ||
-                i.first == "vmi_if1_ipv4_ipaddr")
+            std::string intf = "if" + std::to_string(i);
+
+            bool isChanged = false;
+            std::string dhcpEnabled = std::get<std::string>(
+                getAttrFromBiosTable("vmi_" + intf + "_ipv4_method"));
+
+            // Check if it is dhcp.
+            // This method was intended to watch the bios table
+            // property change signal and update the dbus object
+            // whenever the dhcp server has provided an
+            // IP from different range or changed its gateway/subnet mask.
+            // Because, in all other cases,
+            // user configures ip properties that will be set in the dbus
+            // object, followed by bios table updation. Only in this dhcp case,
+            // the dbus will not be having the updated ip address which
+            // is in bios table. This method is to sync the ip addresses
+            // between the bios table & dbus object.
+            if (dhcpEnabled == "IPv4DHCP")
             {
-                std::string currIpAddr = std::get<std::string>(i.second);
-                if (currIpAddr.empty())
-                {
-                    log<level::INFO>("Current IP in biosAttrs copy is empty");
-                    return;
-                }
+                std::string ipAddr;
+                std::string currIpAddr;
+                std::string gateway;
+                uint8_t prefixLen = 0;
 
-                std::string ipAddr =
-                    std::get<std::string>(getAttrFromBiosTable(i.first));
-                if (ipAddr != currIpAddr)
+                auto biosTableAttrs = manager.getBIOSTableAttrs();
+                for (const auto& i : biosTableAttrs)
                 {
-                    // Ip address has been updated. Check if it is dhcp.
-                    // This method was intended to watch the bios table
-                    // property change signal and update the dbus object
-                    // whenever the dhcp server has provided an
-                    // IP from different range. Because, in all other cases,
-                    // user configures ip that will be set in the dbus object,
-                    // followed by bios table updation. Only in this dhcp case,
-                    // the dbus will not be having the updated ip address which
-                    // is in bios table. This method is to sync the ip addresses
-                    // between the bios table & dbus object.
-                    std::string intf;
-                    if (i.first == "vmi_if0_ipv4_ipaddr")
+                    // Get ip address
+                    if ((i.first).ends_with("ipaddr"))
                     {
-                        intf = "if0";
-                    }
-                    else if (i.first == "vmi_if1_ipv4_ipaddr")
-                    {
-                        intf = "if1";
-                    }
-
-                    std::string dhcpEnabled = std::get<std::string>(
-                        getAttrFromBiosTable("vmi_" + intf + "_ipv4_method"));
-                    if (dhcpEnabled == "IPv4DHCP")
-                    {
-                        log<level::INFO>(
-                            "DHCP enabled. Updating respective dbus object");
-                        uint8_t prefixLen = static_cast<uint8_t>(
-                            std::get<int64_t>(getAttrFromBiosTable(
-                                "vmi_" + intf + "_ipv4_prefix_length")));
-                        std::string gateway =
-                            std::get<std::string>(getAttrFromBiosTable(
-                                "vmi_" + intf + "_ipv4_gateway"));
-                        for (auto addr : addrs)
+                        currIpAddr = std::get<std::string>(i.second);
+                        if (currIpAddr.empty())
                         {
-                            if (addr.first == currIpAddr)
-                            {
-                                auto ipObj = addr.second;
-                                ipObj->address(ipAddr);
-                                ipObj->prefixLength(prefixLen);
-                                ipObj->gateway(gateway);
-                                break;
-                            }
+                            log<level::INFO>(
+                                "Current IP in biosAttrs copy is empty");
+                            return;
+                        }
+                        ipAddr = std::get<std::string>(
+                            getAttrFromBiosTable(i.first));
+                        if (ipAddr != currIpAddr)
+                        {
+                            log<level::INFO>("Ip address has changed");
+                            isChanged = true;
                         }
                     }
-                    return;
+
+                    // Get gateway
+                    if ((i.first).ends_with("gateway"))
+                    {
+                        std::string currGateway =
+                            std::get<std::string>(i.second);
+                        if (currGateway.empty())
+                        {
+                            log<level::INFO>(
+                                "Current Gateway in biosAttrs copy is empty");
+                            return;
+                        }
+                        gateway = std::get<std::string>(
+                            getAttrFromBiosTable(i.first));
+                        if (gateway != currGateway)
+                        {
+                            log<level::INFO>("Gateway has changed");
+                            isChanged = true;
+                        }
+                    }
+
+                    // Get prefix length
+                    if ((i.first).ends_with("prefix_length"))
+                    {
+                        uint8_t currPrefixLen =
+                            static_cast<uint8_t>(std::get<int64_t>(i.second));
+                        prefixLen = static_cast<uint8_t>(
+                            std::get<int64_t>(getAttrFromBiosTable(i.first)));
+                        if (prefixLen != currPrefixLen)
+                        {
+                            log<level::INFO>("Prefix length has changed");
+                            isChanged = true;
+                        }
+                    }
+                }
+
+                if (isChanged)
+                {
+                    for (auto addr : addrs)
+                    {
+                        if (addr.first == currIpAddr)
+                        {
+                            auto ipObj = addr.second;
+                            ipObj->address(ipAddr);
+                            if (prefixLen == 0)
+                            {
+                                // The setter method in the ip class, doesnot
+                                // allow the user to set 0 as the prefix length.
+                                // Since, this setting of 0 is within the
+                                // implementation, setting the prefix length
+                                // directly here.
+                                ipObj->HypIP::prefixLength(prefixLen);
+                            }
+                            else
+                            {
+                                ipObj->prefixLength(prefixLen);
+                            }
+                            ipObj->gateway(gateway);
+                            break;
+                        }
+                    }
                 }
             }
+            else
+            {
+                continue;
+            }
         }
+        return;
     };
 
     phosphor::network::matchBIOSAttrUpdate = std::make_unique<
