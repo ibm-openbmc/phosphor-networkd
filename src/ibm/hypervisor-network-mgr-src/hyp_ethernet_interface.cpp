@@ -1,7 +1,5 @@
 #include "hyp_ethernet_interface.hpp"
 
-#include <fstream>
-
 class HypEthInterface;
 class HypIPAddress;
 

@@ -177,10 +177,26 @@ void HypIPAddress::resetIPObjProps()
 {
     // Reset the ip obj properties
     log<level::INFO>("Resetting the ip addr object properties");
-    HypIP::address("0.0.0.0");
-    HypIP::gateway("0.0.0.0");
+
+    std::string zeroIp = "0.0.0.0";
+    HypIP::address(zeroIp);
+    HypIP::gateway(zeroIp);
     HypIP::prefixLength(0);
     HypIP::origin(IP::AddressOrigin::Static);
+
+    std::string prefix = getHypPrefix();
+
+    std::string attrIpaddr = prefix + "ipaddr";
+    parent.setIpPropsInMap(attrIpaddr, zeroIp, "String");
+
+    std::string attrPrefixLen = prefix + "prefix_length";
+    parent.setIpPropsInMap(attrPrefixLen, 0, "Integer");
+
+    std::string attrGateway = prefix + "gateway";
+    parent.setIpPropsInMap(attrGateway, zeroIp, "String");
+
+    std::string attrMethod = prefix + "method";
+    parent.setIpPropsInMap(attrMethod, "IPv4Static", "String");
 }
 
 void HypIPAddress::resetBaseBiosTableAttrs()
