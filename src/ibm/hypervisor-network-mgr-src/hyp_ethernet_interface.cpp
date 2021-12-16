@@ -166,26 +166,31 @@ void HypEthInterface::watchBaseBiosTable()
                 {
                     for (auto addr : addrs)
                     {
-                        if (addr.first == currIpAddr)
+                        // dhcp server changes any/all of its properties
+                        auto ipObj = addr.second;
+                        ipObj->address(ipAddr);
+                        if (prefixLen == 0)
                         {
-                            auto ipObj = addr.second;
-                            ipObj->address(ipAddr);
-                            if (prefixLen == 0)
-                            {
-                                // The setter method in the ip class, doesnot
-                                // allow the user to set 0 as the prefix length.
-                                // Since, this setting of 0 is within the
-                                // implementation, setting the prefix length
-                                // directly here.
-                                ipObj->HypIP::prefixLength(prefixLen);
-                            }
-                            else
-                            {
-                                ipObj->prefixLength(prefixLen);
-                            }
-                            ipObj->gateway(gateway);
-                            break;
+                            // The setter method in the ip class, doesnot
+                            // allow the user to set 0 as the prefix length.
+                            // Since, this setting of 0 is within the
+                            // implementation, setting the prefix length
+                            // directly here.
+                            ipObj->HypIP::prefixLength(prefixLen);
+
+                            // Update the biosTableAttrs map with prefix
+                            // length because we are not calling the setter
+                            // method here.
+                            std::string attrName =
+                                ipObj->getHypPrefix() + "_prefix_length";
+                            setIpPropsInMap(attrName, prefixLen, "Integer");
                         }
+                        else
+                        {
+                            ipObj->prefixLength(prefixLen);
+                        }
+                        ipObj->gateway(gateway);
+                        break;
                     }
                 }
             }
@@ -517,14 +522,6 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
                               Argument::ARGUMENT_VALUE(ipaddress.c_str()));
     }
 
-    for (auto addr : addrs)
-    {
-        auto addrKey = addrs.extract(addr.first);
-        addrKey.key() = ipaddress;
-        auto ipObj = addr.second;
-        break;
-    }
-
     const std::string intfLabel = getIntfLabel();
     if (intfLabel == "")
     {
@@ -543,6 +540,26 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
     }
 
     std::string objPath = objectPath + "/" + protocol + "/" + ipObjId;
+
+    for (auto addr : addrs)
+    {
+        auto ipObj = addr.second;
+        std::string ipObjAddr = ipObj->address();
+        uint8_t ipObjPrefixLen = ipObj->prefixLength();
+        std::string ipObjGateway = ipObj->gateway();
+
+        if ((ipaddress == ipObjAddr) && (prefixLength == ipObjPrefixLen) &&
+            (gateway == ipObjGateway))
+        {
+            log<level::ERR>("Trying to set same ip properties");
+            // Return the existing object path
+            return objPath;
+        }
+        auto addrKey = addrs.extract(addr.first);
+        addrKey.key() = ipaddress;
+        break;
+    }
+
     addrs[ipaddress] = std::make_shared<phosphor::network::HypIPAddress>(
         bus, (objPath).c_str(), *this, protType, ipaddress, origin,
         prefixLength, gateway, intfLabel);
