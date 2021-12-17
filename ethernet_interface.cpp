@@ -262,8 +262,9 @@ InterfaceInfo EthernetInterface::getInterfaceInfo() const
 std::string
     EthernetInterface::getMACAddress(const std::string& interfaceName) const
 {
+    int sock{-1};
     ifreq ifr{};
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0)
     {
         log<level::ERR>("socket creation  failed:",
@@ -276,12 +277,20 @@ std::string
     {
         log<level::ERR>("ioctl failed for SIOCGIFHWADDR:",
                         entry("ERROR=%s", strerror(errno)));
+        if (sock)
+        {
+            close(sock);
+        }
         return "";
     }
 
     static_assert(sizeof(ifr.ifr_hwaddr.sa_data) >= sizeof(ether_addr));
     std::string_view hwaddr(reinterpret_cast<char*>(ifr.ifr_hwaddr.sa_data),
                             sizeof(ifr.ifr_hwaddr.sa_data));
+    if (sock)
+    {
+        close(sock);
+    }
     return mac_address::toString(copyFrom<ether_addr>(hwaddr));
 }
 
