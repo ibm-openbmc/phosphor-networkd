@@ -100,6 +100,32 @@ void HypEthInterface::watchBaseBiosTable()
             // between the bios table & dbus object.
             if (dhcpEnabled == "IPv4DHCP")
             {
+                // Get corresponding ethernet interface object
+                std::string ethIntfLabel;
+                if (intf == "if0")
+                {
+                    ethIntfLabel = "eth0";
+                }
+                else
+                {
+                    ethIntfLabel = "eth1";
+                }
+
+                // Get the list of all ethernet interfaces from the parent
+                // data member to get the eth object corresponding to the
+                // eth interface label above
+                auto ethIntfList = manager.getEthIntfList();
+                auto findEthObj = ethIntfList.find(ethIntfLabel);
+
+                if (findEthObj == ethIntfList.end())
+                {
+                    log<level::ERR>("Cannot find ethernet object");
+                    return;
+                }
+
+                std::shared_ptr<phosphor::network::HypEthInterface> ethObj = findEthObj->second;
+                auto ipAddrs = ethObj->addrs;
+
                 std::string ipAddr;
                 std::string currIpAddr;
                 std::string gateway;
@@ -109,7 +135,7 @@ void HypEthInterface::watchBaseBiosTable()
                 for (const auto& i : biosTableAttrs)
                 {
                     // Get ip address
-                    if ((i.first).ends_with("ipaddr"))
+                    if ((i.first).ends_with(intf + "_ipv4_ipaddr"))
                     {
                         currIpAddr = std::get<std::string>(i.second);
                         if (currIpAddr.empty())
@@ -128,7 +154,7 @@ void HypEthInterface::watchBaseBiosTable()
                     }
 
                     // Get gateway
-                    if ((i.first).ends_with("gateway"))
+                    if ((i.first).ends_with(intf + "_ipv4_gateway"))
                     {
                         std::string currGateway =
                             std::get<std::string>(i.second);
@@ -148,7 +174,7 @@ void HypEthInterface::watchBaseBiosTable()
                     }
 
                     // Get prefix length
-                    if ((i.first).ends_with("prefix_length"))
+                    if ((i.first).ends_with(intf + "_ipv4_prefix_length"))
                     {
                         uint8_t currPrefixLen =
                             static_cast<uint8_t>(std::get<int64_t>(i.second));
@@ -164,7 +190,7 @@ void HypEthInterface::watchBaseBiosTable()
 
                 if (isChanged)
                 {
-                    for (auto addr : addrs)
+                    for (auto addr : ipAddrs)
                     {
                         // dhcp server changes any/all of its properties
                         auto ipObj = addr.second;
@@ -209,54 +235,6 @@ void HypEthInterface::watchBaseBiosTable()
         "DBus.Properties',arg0namespace='xyz.openbmc_project.BIOSConfig."
         "Manager'",
         BIOSAttrUpdate);
-}
-
-void HypEthInterface::dhcpCallbackMethod()
-{
-    auto biosTableAttrs = manager.getBIOSTableAttrs();
-    std::shared_ptr<phosphor::network::HypIPAddress> ipAddrObj = NULL;
-
-    for (const auto& ipAddr : addrs)
-    {
-        ipAddrObj = ipAddr.second;
-
-        if (ipAddrObj == nullptr)
-        {
-            log<level::ERR>("Problem in retrieving the ip address object");
-            return;
-        }
-        std::string address;
-        std::string gateway;
-        uint8_t prefixLenUint = 0;
-
-        std::string hypPrefix = ipAddrObj->getHypPrefix();
-        if (hypPrefix.empty())
-        {
-            log<level::ERR>(
-                "Problem in retrieving the bios table attribute prefix");
-            return;
-        }
-        for (const auto& biosAttr : biosTableAttrs)
-        {
-            if (biosAttr.first == hypPrefix + "ipaddr")
-            {
-                address = std::get<std::string>(biosAttr.second);
-            }
-            if (biosAttr.first == hypPrefix + "gateway")
-            {
-                gateway = std::get<std::string>(biosAttr.second);
-            }
-            if (biosAttr.first == hypPrefix + "prefix_length")
-            {
-                prefixLenUint =
-                    static_cast<uint8_t>(std::get<int64_t>(biosAttr.second));
-            }
-        }
-        ipAddrObj->address(address);
-        ipAddrObj->gateway(gateway);
-        ipAddrObj->prefixLength(prefixLenUint);
-        break;
-    }
 }
 
 std::shared_ptr<phosphor::network::HypIPAddress>
@@ -602,7 +580,6 @@ HypEthernetIntf::DHCPConf
                 std::make_tuple(biosEnumType, "IPv4DHCP"));
             ipObj->updateBiosPendingAttrs(pendingAttributes);
             log<level::INFO>("Updating the ip address properties");
-            dhcpCallbackMethod();
             break;
         }
     }

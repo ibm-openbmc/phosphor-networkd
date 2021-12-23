@@ -215,6 +215,11 @@ biosTableType HypNetworkMgr::getBIOSTableAttrs()
     return biosTableAttrs;
 }
 
+ethIntfMapType HypNetworkMgr::getEthIntfList()
+{
+    return interfaces;
+}
+
 void HypNetworkMgr::createIfObjects()
 {
     setBIOSTableAttrs();
