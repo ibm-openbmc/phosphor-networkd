@@ -123,7 +123,8 @@ void HypEthInterface::watchBaseBiosTable()
                     return;
                 }
 
-                std::shared_ptr<phosphor::network::HypEthInterface> ethObj = findEthObj->second;
+                std::shared_ptr<phosphor::network::HypEthInterface> ethObj =
+                    findEthObj->second;
                 auto ipAddrs = ethObj->addrs;
 
                 std::string ipAddr;
