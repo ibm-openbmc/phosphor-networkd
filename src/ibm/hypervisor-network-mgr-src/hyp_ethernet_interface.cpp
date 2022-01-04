@@ -497,6 +497,24 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
                               Argument::ARGUMENT_VALUE(ipaddress.c_str()));
     }
 
+    if (!isValidIP(AF_INET, gateway) && !isValidIP(AF_INET6, gateway))
+    {
+        log<level::ERR>("Not a valid gateway"),
+            entry("ADDRESS=%s", ipaddress.c_str());
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Gateway"),
+                              Argument::ARGUMENT_VALUE(ipaddress.c_str()));
+    }
+
+    if (!isValidPrefix(AF_INET, prefixLength) &&
+        !isValidPrefix(AF_INET6, prefixLength))
+    {
+        log<level::ERR>("PrefixLength is not correct "),
+            entry("PREFIXLENGTH=%" PRIu8, prefixLength);
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("prefixLength"),
+            Argument::ARGUMENT_VALUE(std::to_string(prefixLength).c_str()));
+    }
+
     const std::string intfLabel = getIntfLabel();
     if (intfLabel == "")
     {
