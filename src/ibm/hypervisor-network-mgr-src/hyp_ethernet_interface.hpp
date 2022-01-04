@@ -156,10 +156,6 @@ class HypEthInterface : public CreateIface
                          std::variant<std::string, int64_t> attrValue,
                          std::string attrType);
 
-    /* @brief Function to set dhcp ip address in dbus when dhcp is set to true
-     */
-    void dhcpCallbackMethod();
-
     /* @brief Returns the dhcp enabled property
      * @param[in] protocol - ipv4/ipv6
      * @return bool - true if dhcpEnabled

@@ -87,116 +87,139 @@ void HypEthInterface::watchBaseBiosTable()
             std::string dhcpEnabled = std::get<std::string>(
                 getAttrFromBiosTable("vmi_" + intf + "_ipv4_method"));
 
-            // Check if it is dhcp.
             // This method was intended to watch the bios table
             // property change signal and update the dbus object
             // whenever the dhcp server has provided an
-            // IP from different range or changed its gateway/subnet mask.
+            // IP from different range or changed its gateway/subnet mask (or)
+            // when user updates the bios table ip attributes -
+            // patch on /redfish/v1/Systems/system/Bios/Settings
             // Because, in all other cases,
             // user configures ip properties that will be set in the dbus
-            // object, followed by bios table updation. Only in this dhcp case,
+            // object, followed by bios table updation. In this dhcp case,
             // the dbus will not be having the updated ip address which
-            // is in bios table. This method is to sync the ip addresses
+            // is in bios table, also in the second case, where one patches
+            // bios table attributes, the dbus object will not have the updated
+            // values. This method is to sync the ip addresses
             // between the bios table & dbus object.
-            if (dhcpEnabled == "IPv4DHCP")
+
+            // Get corresponding ethernet interface object
+            std::string ethIntfLabel;
+            if (intf == "if0")
             {
-                std::string ipAddr;
-                std::string currIpAddr;
-                std::string gateway;
-                uint8_t prefixLen = 0;
-
-                auto biosTableAttrs = manager.getBIOSTableAttrs();
-                for (const auto& i : biosTableAttrs)
-                {
-                    // Get ip address
-                    if ((i.first).ends_with("ipaddr"))
-                    {
-                        currIpAddr = std::get<std::string>(i.second);
-                        if (currIpAddr.empty())
-                        {
-                            log<level::INFO>(
-                                "Current IP in biosAttrs copy is empty");
-                            return;
-                        }
-                        ipAddr = std::get<std::string>(
-                            getAttrFromBiosTable(i.first));
-                        if (ipAddr != currIpAddr)
-                        {
-                            log<level::INFO>("Ip address has changed");
-                            isChanged = true;
-                        }
-                    }
-
-                    // Get gateway
-                    if ((i.first).ends_with("gateway"))
-                    {
-                        std::string currGateway =
-                            std::get<std::string>(i.second);
-                        if (currGateway.empty())
-                        {
-                            log<level::INFO>(
-                                "Current Gateway in biosAttrs copy is empty");
-                            return;
-                        }
-                        gateway = std::get<std::string>(
-                            getAttrFromBiosTable(i.first));
-                        if (gateway != currGateway)
-                        {
-                            log<level::INFO>("Gateway has changed");
-                            isChanged = true;
-                        }
-                    }
-
-                    // Get prefix length
-                    if ((i.first).ends_with("prefix_length"))
-                    {
-                        uint8_t currPrefixLen =
-                            static_cast<uint8_t>(std::get<int64_t>(i.second));
-                        prefixLen = static_cast<uint8_t>(
-                            std::get<int64_t>(getAttrFromBiosTable(i.first)));
-                        if (prefixLen != currPrefixLen)
-                        {
-                            log<level::INFO>("Prefix length has changed");
-                            isChanged = true;
-                        }
-                    }
-                }
-
-                if (isChanged)
-                {
-                    for (auto addr : addrs)
-                    {
-                        // dhcp server changes any/all of its properties
-                        auto ipObj = addr.second;
-                        ipObj->address(ipAddr);
-                        if (prefixLen == 0)
-                        {
-                            // The setter method in the ip class, doesnot
-                            // allow the user to set 0 as the prefix length.
-                            // Since, this setting of 0 is within the
-                            // implementation, setting the prefix length
-                            // directly here.
-                            ipObj->HypIP::prefixLength(prefixLen);
-
-                            // Update the biosTableAttrs map with prefix
-                            // length because we are not calling the setter
-                            // method here.
-                            std::string attrName =
-                                ipObj->getHypPrefix() + "_prefix_length";
-                            setIpPropsInMap(attrName, prefixLen, "Integer");
-                        }
-                        else
-                        {
-                            ipObj->prefixLength(prefixLen);
-                        }
-                        ipObj->gateway(gateway);
-                        break;
-                    }
-                }
+                ethIntfLabel = "eth0";
             }
             else
             {
-                continue;
+                ethIntfLabel = "eth1";
+            }
+
+            // Get the list of all ethernet interfaces from the parent
+            // data member to get the eth object corresponding to the
+            // eth interface label above
+            auto ethIntfList = manager.getEthIntfList();
+            auto findEthObj = ethIntfList.find(ethIntfLabel);
+
+            if (findEthObj == ethIntfList.end())
+            {
+                log<level::ERR>("Cannot find ethernet object");
+                return;
+            }
+
+            std::shared_ptr<phosphor::network::HypEthInterface> ethObj =
+                findEthObj->second;
+            auto ipAddrs = ethObj->addrs;
+
+            std::string ipAddr;
+            std::string currIpAddr;
+            std::string gateway;
+            uint8_t prefixLen = 0;
+
+            auto biosTableAttrs = manager.getBIOSTableAttrs();
+            for (const auto& i : biosTableAttrs)
+            {
+                // Get ip address
+                if ((i.first).ends_with(intf + "_ipv4_ipaddr"))
+                {
+                    currIpAddr = std::get<std::string>(i.second);
+                    if (currIpAddr.empty())
+                    {
+                        log<level::INFO>(
+                            "Current IP in biosAttrs copy is empty");
+                        return;
+                    }
+                    ipAddr =
+                        std::get<std::string>(getAttrFromBiosTable(i.first));
+                    if (ipAddr != currIpAddr)
+                    {
+                        log<level::INFO>("Ip address has changed");
+                        isChanged = true;
+                    }
+                }
+
+                // Get gateway
+                if ((i.first).ends_with(intf + "_ipv4_gateway"))
+                {
+                    std::string currGateway = std::get<std::string>(i.second);
+                    if (currGateway.empty())
+                    {
+                        log<level::INFO>(
+                            "Current Gateway in biosAttrs copy is empty");
+                        return;
+                    }
+                    gateway =
+                        std::get<std::string>(getAttrFromBiosTable(i.first));
+                    if (gateway != currGateway)
+                    {
+                        log<level::INFO>("Gateway has changed");
+                        isChanged = true;
+                    }
+                }
+
+                // Get prefix length
+                if ((i.first).ends_with(intf + "_ipv4_prefix_length"))
+                {
+                    uint8_t currPrefixLen =
+                        static_cast<uint8_t>(std::get<int64_t>(i.second));
+                    prefixLen = static_cast<uint8_t>(
+                        std::get<int64_t>(getAttrFromBiosTable(i.first)));
+                    if (prefixLen != currPrefixLen)
+                    {
+                        log<level::INFO>("Prefix length has changed");
+                        isChanged = true;
+                    }
+                }
+            }
+
+            if (isChanged)
+            {
+                for (auto addr : ipAddrs)
+                {
+                    // dhcp server changes any/all of its properties
+                    auto ipObj = addr.second;
+                    ipObj->address(ipAddr);
+                    if (prefixLen == 0)
+                    {
+                        // The setter method in the ip class, doesnot
+                        // allow the user to set 0 as the prefix length.
+                        // Since, this setting of 0 is within the
+                        // implementation, setting the prefix length
+                        // directly here.
+                        ipObj->HypIP::prefixLength(prefixLen);
+
+                        // Update the biosTableAttrs map with prefix
+                        // length because we are not calling the setter
+                        // method here.
+                        std::string attrName =
+                            ipObj->getHypPrefix() + "_prefix_length";
+                        setIpPropsInMap(attrName, prefixLen, "Integer");
+                    }
+                    else
+                    {
+                        ipObj->prefixLength(prefixLen);
+                    }
+                    ipObj->gateway(gateway);
+                    break;
+                }
             }
         }
         return;
@@ -209,54 +232,6 @@ void HypEthInterface::watchBaseBiosTable()
         "DBus.Properties',arg0namespace='xyz.openbmc_project.BIOSConfig."
         "Manager'",
         BIOSAttrUpdate);
-}
-
-void HypEthInterface::dhcpCallbackMethod()
-{
-    auto biosTableAttrs = manager.getBIOSTableAttrs();
-    std::shared_ptr<phosphor::network::HypIPAddress> ipAddrObj = NULL;
-
-    for (const auto& ipAddr : addrs)
-    {
-        ipAddrObj = ipAddr.second;
-
-        if (ipAddrObj == nullptr)
-        {
-            log<level::ERR>("Problem in retrieving the ip address object");
-            return;
-        }
-        std::string address;
-        std::string gateway;
-        uint8_t prefixLenUint = 0;
-
-        std::string hypPrefix = ipAddrObj->getHypPrefix();
-        if (hypPrefix.empty())
-        {
-            log<level::ERR>(
-                "Problem in retrieving the bios table attribute prefix");
-            return;
-        }
-        for (const auto& biosAttr : biosTableAttrs)
-        {
-            if (biosAttr.first == hypPrefix + "ipaddr")
-            {
-                address = std::get<std::string>(biosAttr.second);
-            }
-            if (biosAttr.first == hypPrefix + "gateway")
-            {
-                gateway = std::get<std::string>(biosAttr.second);
-            }
-            if (biosAttr.first == hypPrefix + "prefix_length")
-            {
-                prefixLenUint =
-                    static_cast<uint8_t>(std::get<int64_t>(biosAttr.second));
-            }
-        }
-        ipAddrObj->address(address);
-        ipAddrObj->gateway(gateway);
-        ipAddrObj->prefixLength(prefixLenUint);
-        break;
-    }
 }
 
 std::shared_ptr<phosphor::network::HypIPAddress>
@@ -522,6 +497,24 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
                               Argument::ARGUMENT_VALUE(ipaddress.c_str()));
     }
 
+    if (!isValidIP(AF_INET, gateway) && !isValidIP(AF_INET6, gateway))
+    {
+        log<level::ERR>("Not a valid gateway"),
+            entry("ADDRESS=%s", ipaddress.c_str());
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Gateway"),
+                              Argument::ARGUMENT_VALUE(ipaddress.c_str()));
+    }
+
+    if (!isValidPrefix(AF_INET, prefixLength) &&
+        !isValidPrefix(AF_INET6, prefixLength))
+    {
+        log<level::ERR>("PrefixLength is not correct "),
+            entry("PREFIXLENGTH=%" PRIu8, prefixLength);
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("prefixLength"),
+            Argument::ARGUMENT_VALUE(std::to_string(prefixLength).c_str()));
+    }
+
     const std::string intfLabel = getIntfLabel();
     if (intfLabel == "")
     {
@@ -602,7 +595,6 @@ HypEthernetIntf::DHCPConf
                 std::make_tuple(biosEnumType, "IPv4DHCP"));
             ipObj->updateBiosPendingAttrs(pendingAttributes);
             log<level::INFO>("Updating the ip address properties");
-            dhcpCallbackMethod();
             break;
         }
     }

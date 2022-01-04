@@ -48,6 +48,7 @@ enum BiosBaseTableIndex
 };
 
 using SystemConfPtr = std::unique_ptr<HypSysConfig>;
+using ethIntfMapType = std::map<std::string, std::shared_ptr<HypEthInterface>>;
 
 /** @class Manager
  *  @brief Implementation for the
@@ -97,6 +98,12 @@ class HypNetworkMgr
     void setBIOSTableAttr(std::string attrName,
                           std::variant<std::string, int64_t> attrValue,
                           std::string attrType);
+
+    /** @brief Get the ethernet interfaces list data member
+     *
+     * @return ethernet interfaces list
+     */
+    ethIntfMapType getEthIntfList();
 
   private:
     /**
