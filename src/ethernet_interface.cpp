@@ -43,6 +43,11 @@ constexpr auto RESOLVED_SERVICE = "org.freedesktop.resolve1";
 constexpr auto RESOLVED_INTERFACE = "org.freedesktop.resolve1.Link";
 constexpr auto PROPERTY_INTERFACE = "org.freedesktop.DBus.Properties";
 constexpr auto RESOLVED_SERVICE_PATH = "/org/freedesktop/resolve1/link/";
+
+constexpr auto TIMESYNCD_SERVICE = "org.freedesktop.timesync1";
+constexpr auto TIMESYNCD_INTERFACE = "org.freedesktop.timesync1.Manager";
+constexpr auto TIMESYNCD_SERVICE_PATH = "/org/freedesktop/timesync1";
+
 constexpr auto METHOD_GET = "Get";
 
 struct EthernetIntfSocket
@@ -117,8 +122,6 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
     {
         MacAddressIntf::macAddress(getMACAddress(intfName));
     }
-    EthernetInterfaceIntf::ntpServers(getNTPServersFromConf());
-
     EthernetInterfaceIntf::linkUp(linkUp());
     EthernetInterfaceIntf::nicEnabled(nicEnabled());
 
@@ -689,10 +692,40 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
     return EthernetInterfaceIntf::staticNameServers();
 }
 
+void EthernetInterface::loadNTPServers()
+{
+    EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
+    EthernetInterfaceIntf::staticNTPServers(getstaticNTPServersFromConf());
+}
+
 void EthernetInterface::loadNameServers()
 {
     EthernetInterfaceIntf::nameservers(getNameServerFromResolvd());
     EthernetInterfaceIntf::staticNameServers(getstaticNameServerFromConf());
+}
+
+ServerList EthernetInterface::getNTPServerFromTimeSyncd()
+{
+    ServerList servers; // Variable to capture the NTP Server IPs
+    auto method = bus.new_method_call(TIMESYNCD_SERVICE, TIMESYNCD_SERVICE_PATH,
+                                      PROPERTY_INTERFACE, METHOD_GET);
+
+    method.append(TIMESYNCD_INTERFACE, "LinkNTPServers");
+    auto reply = bus.call(method);
+
+    try
+    {
+        std::variant<ServerList> response;
+        reply.read(response);
+        servers = std::get<ServerList>(response);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        log<level::ERR>(
+            "Failed to get NTP server information from Systemd-Timesyncd");
+    }
+
+    return servers;
 }
 
 ServerList EthernetInterface::getstaticNameServerFromConf()
@@ -859,7 +892,7 @@ bool EthernetInterface::getIPv6AcceptRAFromConf()
     return (values[0] == "true");
 }
 
-ServerList EthernetInterface::getNTPServersFromConf()
+ServerList EthernetInterface::getstaticNTPServersFromConf()
 {
     fs::path confPath = manager.getConfDir();
 
@@ -881,15 +914,25 @@ ServerList EthernetInterface::getNTPServersFromConf()
     return servers;
 }
 
-ServerList EthernetInterface::ntpServers(ServerList servers)
+ServerList EthernetInterface::staticNTPServers(ServerList value)
 {
-    auto ntpServers = EthernetInterfaceIntf::ntpServers(servers);
+    try
+    {
+        EthernetInterfaceIntf::staticNTPServers(value);
 
-    writeConfigurationFile();
-    // timesynchd reads the NTP server configuration from the
-    // network file.
-    manager.restartSystemdUnit(networkdService);
-    return ntpServers;
+        writeConfigurationFile();
+        manager.reloadConfigs();
+    }
+    catch (InternalFailure& e)
+    {
+        log<level::ERR>("Exception processing NTP entries");
+    }
+    return EthernetInterfaceIntf::staticNTPServers();
+}
+
+ServerList EthernetInterface::ntpServers(ServerList /*servers*/)
+{
+    elog<NotAllowed>(NotAllowedArgument::REASON("ReadOnly Property"));
 }
 // Need to merge the below function with the code which writes the
 // config file during factory reset.
@@ -961,7 +1004,7 @@ void EthernetInterface::writeConfigurationFile()
                << "\n";
     }
     // Add the NTP server
-    for (const auto& ntp : EthernetInterfaceIntf::ntpServers())
+    for (const auto& ntp : EthernetInterfaceIntf::staticNTPServers())
     {
         stream << "NTP=" << ntp << "\n";
     }

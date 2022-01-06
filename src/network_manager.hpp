@@ -130,6 +130,11 @@ class Manager : public details::VLANCreateIface
     void setFistBootMACOnInterface(
         const std::pair<std::string, std::string>& ethPair);
 
+    /** @brief Arms a timer to tell systemd-network to reload all of the network
+     * configurations
+     */
+    virtual void reloadConfigs();
+
     /** @brief Restart the systemd unit
      *  @param[in] unit - systemd unit name which needs to be
      *                    restarted.
