@@ -127,6 +127,28 @@ void HypEthInterface::watchBaseBiosTable()
 
             std::shared_ptr<phosphor::network::HypEthInterface> ethObj =
                 findEthObj->second;
+
+            DHCPConf dhcpState = ethObj->dhcpEnabled();
+
+            if ((dhcpState == HypEthInterface::DHCPConf::none) &&
+                (dhcpEnabled == "IPv4DHCP"))
+            {
+                // There is a change in bios table method attribute (changed to
+                // dhcp) but dbus property contains static Change the dbus
+                // property to dhcp
+                log<level::INFO>("Setting dhcp on the dbus object");
+                ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+            }
+            else if ((dhcpState != HypEthInterface::DHCPConf::none) &&
+                     (dhcpEnabled == "IPv4Static"))
+            {
+                // There is a change in bios table method attribute (changed to
+                // static) but dbus property contains dhcp Change the dbus
+                // property to static
+                log<level::INFO>("Setting static on the dbus object");
+                ethObj->dhcpEnabled(HypEthInterface::DHCPConf::none);
+            }
+
             auto ipAddrs = ethObj->addrs;
 
             std::string ipAddr;
