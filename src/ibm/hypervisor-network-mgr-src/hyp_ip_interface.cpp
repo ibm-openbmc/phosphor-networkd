@@ -55,7 +55,8 @@ void HypIPAddress::setEnabledProp()
 
 bool HypIPAddress::enabled(bool value)
 {
-    log<level::INFO>("Changing value of enabled property");
+    log<level::INFO>("Changing value of enabled property",
+                     entry("INTERFACE=%s", intf.c_str()));
 
     if (value == HypEnableIntf::enabled())
     {
@@ -284,7 +285,7 @@ std::string HypIPAddress::gateway(std::string gateway)
 
     if (gateway == gw)
     {
-        log<level::INFO>("This value is already existing");
+        // value is already existing
         return gw;
     }
     int addressFamily =
@@ -323,7 +324,7 @@ HypIP::AddressOrigin HypIPAddress::origin(HypIP::AddressOrigin origin)
     auto addrOrigin = HypIP::origin();
     if (origin == addrOrigin)
     {
-        log<level::INFO>("This value is already existing");
+        // value is already existing
         return addrOrigin;
     }
 
