@@ -226,6 +226,7 @@ std::string HypIPAddress::address(std::string ipAddress)
         elog<NotAllowed>(NotAllowedArgument::REASON("Invalid Ip"));
     }
 
+    log<level::INFO>("IP updated"), entry("ADDRESS=%s", ipAddress.c_str());
     ipAddress = HypIP::address(ipAddress);
 
     // update the addrs map of parent object
