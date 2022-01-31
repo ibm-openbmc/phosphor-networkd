@@ -71,7 +71,6 @@ void HypEthInterface::watchBaseBiosTable()
             // Return & continue to listen
             return;
         }
-        log<level::INFO>("BaseBIOSTable - property changed");
 
         // Check if the IP address has changed (i.e., if current ip address in
         // the biosTableAttrs data member and ip address in bios table are
@@ -127,6 +126,28 @@ void HypEthInterface::watchBaseBiosTable()
 
             std::shared_ptr<phosphor::network::HypEthInterface> ethObj =
                 findEthObj->second;
+
+            DHCPConf dhcpState = ethObj->dhcpEnabled();
+
+            if ((dhcpState == HypEthInterface::DHCPConf::none) &&
+                (dhcpEnabled == "IPv4DHCP"))
+            {
+                // There is a change in bios table method attribute (changed to
+                // dhcp) but dbus property contains static Change the dbus
+                // property to dhcp
+                log<level::INFO>("Setting dhcp on the dbus object");
+                ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+            }
+            else if ((dhcpState != HypEthInterface::DHCPConf::none) &&
+                     (dhcpEnabled == "IPv4Static"))
+            {
+                // There is a change in bios table method attribute (changed to
+                // static) but dbus property contains dhcp Change the dbus
+                // property to static
+                log<level::INFO>("Setting static on the dbus object");
+                ethObj->dhcpEnabled(HypEthInterface::DHCPConf::none);
+            }
+
             auto ipAddrs = ethObj->addrs;
 
             std::string ipAddr;
@@ -151,7 +172,7 @@ void HypEthInterface::watchBaseBiosTable()
                         std::get<std::string>(getAttrFromBiosTable(i.first));
                     if (ipAddr != currIpAddr)
                     {
-                        log<level::INFO>("Ip address has changed");
+                        // Ip address has changed
                         isChanged = true;
                     }
                 }
@@ -170,7 +191,7 @@ void HypEthInterface::watchBaseBiosTable()
                         std::get<std::string>(getAttrFromBiosTable(i.first));
                     if (gateway != currGateway)
                     {
-                        log<level::INFO>("Gateway has changed");
+                        // Gateway has changed
                         isChanged = true;
                     }
                 }
@@ -184,7 +205,7 @@ void HypEthInterface::watchBaseBiosTable()
                         std::get<int64_t>(getAttrFromBiosTable(i.first)));
                     if (prefixLen != currPrefixLen)
                     {
-                        log<level::INFO>("Prefix length has changed");
+                        // Prefix length has changed"
                         isChanged = true;
                     }
                 }
@@ -315,7 +336,7 @@ void HypEthInterface::updateIPAddress(std::string ip, std::string updatedIp)
         auto ipObj = it->second;
         deleteObject(ip);
         addrs.emplace(updatedIp, ipObj);
-        log<level::INFO>("Successfully updated ip address");
+        // Successfully updated ip address
         return;
     }
 }
@@ -329,7 +350,7 @@ void HypEthInterface::deleteObject(const std::string& ipaddress)
         return;
     }
     addrs.erase(it);
-    log<level::INFO>("Successfully deleted the ip address object");
+    // Successfully deleted the ip address object
 }
 
 std::string HypEthInterface::getIntfLabel()
