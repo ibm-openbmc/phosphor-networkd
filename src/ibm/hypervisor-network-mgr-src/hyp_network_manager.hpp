@@ -136,12 +136,6 @@ class HypNetworkMgr
         return systemConf;
     }
 
-    /** @brief Get the hypervisor eth interfaces count
-     *
-     *  @return number of interfaces
-     */
-    uint16_t getIntfCount();
-
     /** @brief Setter method for biosTableAttrs data member
      *         GET operation on the BIOS table to
      *         read all the hyp attrbutes (name, value pair)
@@ -165,9 +159,6 @@ class HypNetworkMgr
      *         objects and their names
      */
     std::map<std::string, std::shared_ptr<HypEthInterface>> interfaces;
-
-    /** @brief interface count */
-    uint16_t intfCount;
 
     /** @brief map of bios table attrs and values */
     std::map<std::string, std::variant<int64_t, std::string>> biosTableAttrs;
