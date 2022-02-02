@@ -173,6 +173,8 @@ void HypEthInterface::watchBaseBiosTable()
                     if (ipAddr != currIpAddr)
                     {
                         // Ip address has changed
+                        log<level::INFO>("Ip address has changed",
+                            entry("IP ADDRESS=%s", ipAddr.c_str()));
                         isChanged = true;
                     }
                 }
@@ -192,6 +194,8 @@ void HypEthInterface::watchBaseBiosTable()
                     if (gateway != currGateway)
                     {
                         // Gateway has changed
+                        log<level::INFO>("Gateway has changed",
+                            entry("GATEWAY=%s", gateway.c_str()));
                         isChanged = true;
                     }
                 }
@@ -206,6 +210,8 @@ void HypEthInterface::watchBaseBiosTable()
                     if (prefixLen != currPrefixLen)
                     {
                         // Prefix length has changed"
+                        log<level::INFO>("Prefix length has changed",
+                            entry("PREFIX_LENGTH=%s", prefixLen));
                         isChanged = true;
                     }
                 }
