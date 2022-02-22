@@ -609,7 +609,6 @@ HypEthernetIntf::DHCPConf
         for (auto itr : addrs)
         {
             auto ipObj = itr.second;
-            ipObj->resetIPObjProps();
             PendingAttributesType pendingAttributes;
             pendingAttributes.insert_or_assign(
                 ipObj->mapDbusToBiosAttr("origin"),
@@ -630,7 +629,7 @@ HypEthernetIntf::DHCPConf
                 std::make_tuple(biosEnumType, "IPv4Static"));
             ipObj->updateBiosPendingAttrs(pendingAttributes);
             ipObj->resetBaseBiosTableAttrs();
-            ipObj->resetIPObjProps();
+
             break;
         }
     }
