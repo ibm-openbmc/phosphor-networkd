@@ -82,7 +82,6 @@ void HypEthInterface::watchBaseBiosTable()
         {
             std::string intf = "if" + std::to_string(i);
 
-            bool isChanged = false;
             std::string dhcpEnabled = std::get<std::string>(
                 getAttrFromBiosTable("vmi_" + intf + "_ipv4_method"));
 
@@ -173,7 +172,14 @@ void HypEthInterface::watchBaseBiosTable()
                     if (ipAddr != currIpAddr)
                     {
                         // Ip address has changed
-                        isChanged = true;
+                        for (auto addrs : ipAddrs)
+                        {
+                            auto ipObj = addrs.second;
+                            ipObj->HypIP::address(ipAddr);
+                            setIpPropsInMap(i.first, ipAddr, "String");
+                            break;
+                        }
+                        return;
                     }
                 }
 
@@ -192,7 +198,14 @@ void HypEthInterface::watchBaseBiosTable()
                     if (gateway != currGateway)
                     {
                         // Gateway has changed
-                        isChanged = true;
+                        for (auto addrs : ipAddrs)
+                        {
+                            auto ipObj = addrs.second;
+                            ipObj->HypIP::gateway(gateway);
+                            setIpPropsInMap(i.first, gateway, "String");
+                            break;
+                        }
+                        return;
                     }
                 }
 
@@ -206,40 +219,15 @@ void HypEthInterface::watchBaseBiosTable()
                     if (prefixLen != currPrefixLen)
                     {
                         // Prefix length has changed"
-                        isChanged = true;
+                        for (auto addrs : ipAddrs)
+                        {
+                            auto ipObj = addrs.second;
+                            ipObj->HypIP::prefixLength(prefixLen);
+                            setIpPropsInMap(i.first, prefixLen, "Integer");
+                            break;
+                        }
+                        return;
                     }
-                }
-            }
-
-            if (isChanged)
-            {
-                for (auto addr : ipAddrs)
-                {
-                    // dhcp server changes any/all of its properties
-                    auto ipObj = addr.second;
-                    ipObj->address(ipAddr);
-                    if (prefixLen == 0)
-                    {
-                        // The setter method in the ip class, doesnot
-                        // allow the user to set 0 as the prefix length.
-                        // Since, this setting of 0 is within the
-                        // implementation, setting the prefix length
-                        // directly here.
-                        ipObj->HypIP::prefixLength(prefixLen);
-
-                        // Update the biosTableAttrs map with prefix
-                        // length because we are not calling the setter
-                        // method here.
-                        std::string attrName =
-                            ipObj->getHypPrefix() + "_prefix_length";
-                        setIpPropsInMap(attrName, prefixLen, "Integer");
-                    }
-                    else
-                    {
-                        ipObj->prefixLength(prefixLen);
-                    }
-                    ipObj->gateway(gateway);
-                    break;
                 }
             }
         }
