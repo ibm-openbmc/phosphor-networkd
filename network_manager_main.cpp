@@ -40,9 +40,7 @@ void refreshObjects()
 {
     if (manager)
     {
-        log<level::INFO>("Refreshing the objects.");
         manager->createChildObjects();
-        log<level::INFO>("Refreshing complete.");
     }
 }
 
