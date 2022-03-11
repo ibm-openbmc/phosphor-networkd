@@ -55,10 +55,12 @@ void HypIPAddress::setEnabledProp()
 
 bool HypIPAddress::enabled(bool value)
 {
+    bool oldValue = HypEnableIntf::enabled();
     log<level::INFO>("Changing value of enabled property",
-                     entry("INTERFACE=%s", intf.c_str()));
+                     entry("INTERFACE=%s", intf.c_str()),
+                     entry("OLDVALUE=%d", oldValue), entry("VALUE=%d", value));
 
-    if (value == HypEnableIntf::enabled())
+    if (value == oldValue)
     {
         return value;
     }
