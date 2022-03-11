@@ -553,14 +553,19 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
         if ((ipaddress == ipObjAddr) && (prefixLength == ipObjPrefixLen) &&
             (gateway == ipObjGateway))
         {
-            log<level::ERR>("Trying to set same ip properties");
-            // Return the existing object path
-            return objPath;
+            log<level::ERR>("INFO: Trying to set same ip properties");
         }
         auto addrKey = addrs.extract(addr.first);
         addrKey.key() = ipaddress;
         break;
     }
+
+    log<level::INFO>("Updating ip properties",
+                     entry("OBJPATH=%s", objPath.c_str()),
+                     entry("INTERFACE=%s", intfLabel.c_str()),
+                     entry("ADDRESS=%s", ipaddress.c_str()),
+                     entry("GATEWAY=%s", gateway.c_str()),
+                     entry("PREFIXLENGTH=%d", prefixLength));
 
     addrs[ipaddress] = std::make_shared<phosphor::network::HypIPAddress>(
         bus, (objPath).c_str(), *this, protType, ipaddress, origin,
