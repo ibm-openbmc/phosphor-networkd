@@ -82,7 +82,9 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
                                      const std::string& objPath,
                                      DHCPConf dhcpEnabled, Manager& parent,
                                      bool emitSignal) :
-    Ifaces(bus, objPath.c_str(), true),
+    Ifaces(bus, objPath.c_str(),
+           emitSignal ? Ifaces::action::defer_emit
+                      : Ifaces::action::emit_no_signals),
     bus(bus), manager(parent), objPath(objPath)
 {
     auto intfName = objPath.substr(objPath.rfind("/") + 1);
