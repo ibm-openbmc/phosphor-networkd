@@ -377,6 +377,39 @@ void HypEthInterface::createIPAddressObjects()
 
     auto biosTableAttrs = manager.getBIOSTableAttrs();
 
+    // The total number of vmi attributes in biosTableAttrs is 9
+    // 4 attributes of interface 0, 4 attributes of interface 1,
+    // and vmi_hostname attribute
+    if (biosTableAttrs.size() < 9)
+    {
+        log<level::INFO>("Creating ip address object with default values");
+        if (intfLabel == "if0")
+        {
+            // set the default values for interface 0 in the local
+            // copy of the bios table - biosTableAttrs
+            manager.setIf0DefaultBIOSTableAttrs();
+            addrs.emplace("eth0",
+                          std::make_shared<phosphor::network::HypIPAddress>(
+                              bus, (objectPath + "/ipv4/addr0").c_str(), *this,
+                              IP::Protocol::IPv4, "0.0.0.0",
+                              IP::AddressOrigin::Static, 0, "0.0.0.0",
+                              intfLabel));
+        }
+        else if (intfLabel == "if1")
+        {
+            // set the default values for interface 0 in the local
+            // copy of the bios table - biosTableAttrs
+            manager.setIf1DefaultBIOSTableAttrs();
+            addrs.emplace("eth1",
+                          std::make_shared<phosphor::network::HypIPAddress>(
+                              bus, (objectPath + "/ipv4/addr0").c_str(), *this,
+                              IP::Protocol::IPv4, "0.0.0.0",
+                              IP::AddressOrigin::Static, 0, "0.0.0.0",
+                              intfLabel));
+        }
+        return;
+    }
+
     for (std::string protocol : {"ipv4", "ipv6"})
     {
         std::string vmi_prefix = "vmi_" + intfLabel + "_" + protocol + "_";
@@ -424,7 +457,6 @@ void HypEthInterface::createIPAddressObjects()
             ipPrefixLength =
                 static_cast<uint8_t>(std::get<int64_t>(biosTableItr->second));
         }
-
         biosTableItr = biosTableAttrs.find(vmi_prefix + "gateway");
         if (biosTableItr != biosTableAttrs.end())
         {

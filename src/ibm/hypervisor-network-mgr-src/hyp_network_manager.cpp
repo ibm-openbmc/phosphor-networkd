@@ -81,6 +81,27 @@ void HypNetworkMgr::setBIOSTableAttr(
     }
 }
 
+void HypNetworkMgr::setIf0DefaultBIOSTableAttrs()
+{
+    biosTableAttrs.emplace("vmi_if0_ipv4_ipaddr", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if0_ipv4_gateway", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if0_ipv4_prefix_length", 0);
+    biosTableAttrs.emplace("vmi_if0_ipv4_method", "IPv4Static");
+}
+
+void HypNetworkMgr::setIf1DefaultBIOSTableAttrs()
+{
+    biosTableAttrs.emplace("vmi_if1_ipv4_ipaddr", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if1_ipv4_gateway", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if1_ipv4_prefix_length", 0);
+    biosTableAttrs.emplace("vmi_if1_ipv4_method", "IPv4Static");
+}
+
+void HypNetworkMgr::setDefaultHostnameInBIOSTableAttrs()
+{
+    biosTableAttrs.emplace("vmi_hostname", "");
+}
+
 void HypNetworkMgr::setBIOSTableAttrs()
 {
     try
@@ -214,6 +235,11 @@ ethIntfMapType HypNetworkMgr::getEthIntfList()
 void HypNetworkMgr::createIfObjects()
 {
     setBIOSTableAttrs();
+
+    if ((getBIOSTableAttrs()).size() == 0)
+    {
+        setDefaultHostnameInBIOSTableAttrs();
+    }
 
     // The hypervisor can support maximum of
     // 2 ethernet interfaces. Both eth0/1 objects are
