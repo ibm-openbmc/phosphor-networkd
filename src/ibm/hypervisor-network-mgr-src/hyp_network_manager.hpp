@@ -105,6 +105,22 @@ class HypNetworkMgr
      */
     ethIntfMapType getEthIntfList();
 
+    /** @brief Method to set all the interface 0 attributes
+     *         to its default value in biosTableAttrs data member
+     */
+    void setIf0DefaultBIOSTableAttrs();
+
+    /** @brief Method to set all the interface 1 attributes
+     *         to its default value in biosTableAttrs data member
+     */
+    void setIf1DefaultBIOSTableAttrs();
+
+    /** @brief Method to set the hostname attribute
+     *         to its default value in biosTableAttrs
+     *         data member
+     */
+    void setDefaultHostnameInBIOSTableAttrs();
+
   private:
     /**
      * @brief get Dbus Prop
