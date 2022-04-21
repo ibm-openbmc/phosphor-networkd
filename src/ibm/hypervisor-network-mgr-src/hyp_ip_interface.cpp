@@ -27,7 +27,7 @@ HypIPAddress::HypIPAddress(sdbusplus::bus::bus& bus, const char* objPath,
                            HypIP::AddressOrigin origin, uint8_t prefixLength,
                            const std::string& gateway,
                            const std::string& intf) :
-    HypIPIfaces(bus, objPath, false),
+    HypIPIfaces(bus, objPath, HypIPIfaces::action::emit_no_signals),
     parent(parent)
 {
     HypIP::address(ipaddress);
