@@ -49,7 +49,7 @@ class Configuration : public Iface
      */
     Configuration(sdbusplus::bus::bus& bus, const std::string& objPath,
                   Manager& parent) :
-        Iface(bus, objPath.c_str(), true),
+        Iface(bus, objPath.c_str(), Iface::action::defer_emit),
         bus(bus), manager(parent)
     {
         ConfigIntf::dnsEnabled(getDHCPPropFromConf("UseDNS"));
