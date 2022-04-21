@@ -24,7 +24,7 @@ using SysConfigIntf =
 
 HypSysConfig::HypSysConfig(sdbusplus::bus::bus& bus, const std::string& objPath,
                            HypNetworkMgr& parent) :
-    Iface(bus, objPath.c_str(), true),
+    Iface(bus, objPath.c_str(), Iface::action::defer_emit),
     bus(bus), manager(parent)
 {
     auto name = getHostNameFromBios();
