@@ -81,20 +81,23 @@ void HypNetworkMgr::setBIOSTableAttr(
     }
 }
 
-void HypNetworkMgr::setIf0DefaultBIOSTableAttrs()
+void HypNetworkMgr::setDefaultBIOSTableAttrsOnIntf(const std::string& intf,
+                                                   const std::string& protocol)
 {
-    biosTableAttrs.emplace("vmi_if0_ipv4_ipaddr", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_if0_ipv4_gateway", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_if0_ipv4_prefix_length", 0);
-    biosTableAttrs.emplace("vmi_if0_ipv4_method", "IPv4Static");
-}
-
-void HypNetworkMgr::setIf1DefaultBIOSTableAttrs()
-{
-    biosTableAttrs.emplace("vmi_if1_ipv4_ipaddr", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_if1_ipv4_gateway", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_if1_ipv4_prefix_length", 0);
-    biosTableAttrs.emplace("vmi_if1_ipv4_method", "IPv4Static");
+    if (protocol == "ipv4")
+    {
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_ipaddr", "0.0.0.0");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_gateway", "0.0.0.0");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_prefix_length", 0);
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_method", "IPv4Static");
+    }
+    else if (protocol == "ipv6")
+    {
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_ipaddr", "::");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_gateway", "::");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_prefix_length", 128);
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_method", "IPv6Static");
+    }
 }
 
 void HypNetworkMgr::setDefaultHostnameInBIOSTableAttrs()
