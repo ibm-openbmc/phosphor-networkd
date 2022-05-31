@@ -78,8 +78,8 @@ std::map<EthernetInterface::DHCPConf,
     mapDHCPToSystemd = {
         {EthernetInterface::DHCPConf::both, {"true", "true", "true"}},
         {EthernetInterface::DHCPConf::v4v6stateless, {"true", "true", "false"}},
-        {EthernetInterface::DHCPConf::v4, {"true", "false", "false"}},
-        {EthernetInterface::DHCPConf::v6, {"false", "true", "true"}},
+        {EthernetInterface::DHCPConf::v4, {"ipv4", "false", "false"}},
+        {EthernetInterface::DHCPConf::v6, {"ipv6", "true", "true"}},
         {EthernetInterface::DHCPConf::v6stateless, {"false", "true", "false"}},
         {EthernetInterface::DHCPConf::none, {"false", "false", "false"}}};
 
@@ -205,20 +205,7 @@ void EthernetInterface::disableDHCP(IP::Protocol protocol)
     }
 }
 
-bool EthernetInterface::dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol)
-{
-    return ((EthernetInterfaceIntf::dhcpEnabled() ==
-             EthernetInterface::DHCPConf::both) ||
-            ((EthernetInterfaceIntf::dhcpEnabled() ==
-              EthernetInterface::DHCPConf::v6) &&
-             ((family == IP::Protocol::IPv6) || ignoreProtocol)) ||
-            ((EthernetInterfaceIntf::dhcpEnabled() ==
-              EthernetInterface::DHCPConf::v4) &&
-             ((family == IP::Protocol::IPv4) || ignoreProtocol)));
-}
-
-bool EthernetInterface::dhcpToBeEnabled(IP::Protocol family,
-                                        const std::string& nextDHCPState)
+bool EthernetInterface::dhcpIsEnabled(IP::Protocol family)
 {
     switch (EthernetInterfaceIntf::dhcpEnabled())
     {
@@ -1050,6 +1037,7 @@ void EthernetInterface::writeConfigurationFile()
 #else
         stream << "LinkLocalAddressing=no\n";
 #endif
+    }
     // Add the VLAN entry
     for (const auto& intf : vlanInterfaces)
     {
@@ -1214,8 +1202,9 @@ std::string EthernetInterface::macAddress(std::string value)
     auto envVar = interfaceToUbootEthAddr(interface.c_str());
     if (envVar)
     {
-        // Trimming MAC addresses that are out of range. eg: AA:FF:FF:FF:FF:100;
-        // and those having more than 6 bytes. eg: AA:AA:AA:AA:AA:AA:BB
+        // Trimming MAC addresses that are out of range. eg:
+        // AA:FF:FF:FF:FF:100; and those having more than 6 bytes. eg:
+        // AA:AA:AA:AA:AA:AA:BB
         execute("/sbin/fw_setenv", "fw_setenv", envVar->c_str(),
                 validMAC.c_str());
     }
@@ -1226,7 +1215,7 @@ std::string EthernetInterface::macAddress(std::string value)
 
 void EthernetInterface::deleteAll()
 {
-    if (dhcpIsEnabled(IP::Protocol::IPv4, true))
+    if (dhcpIsEnabled(IP::Protocol::IPv4))
     {
         log<level::INFO>("DHCP enabled on the interface"),
             entry("INTERFACE=%s", interfaceName().c_str());
