@@ -642,20 +642,54 @@ void EthernetInterface::writeConfigurationFile()
 #endif
         if (!EthernetInterfaceIntf::nicEnabled())
         {
-            link["Unmanaged"].emplace_back("yes");
+        stream << "Unmanaged=yes\n";
         }
-    }
+
+    // write the network section
+    stream << "[Network]\n";
+
+    // do not write eth1 linklocal as it adds routing confusions
+    // with eth0 route.
+    // https://github.com/systemd/systemd/issues/23595
+    // TODO: Remove this check once 23595 is resolved
+    if (interfaceName() != "eth1")
     {
-        auto& network = config.map["Network"].emplace_back();
-        auto& lla = network["LinkLocalAddressing"];
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-        lla.emplace_back("yes");
+        stream << "LinkLocalAddressing=yes\n";
 #else
-        lla.emplace_back("no");
+        stream << "LinkLocalAddressing=no\n";
 #endif
-        network["IPv6AcceptRA"].emplace_back(ipv6AcceptRA() ? "true" : "false");
-        network["DHCP"].emplace_back(dhcp4() ? (dhcp6() ? "true" : "ipv4")
-                                             : (dhcp6() ? "ipv6" : "false"));
+    }
+    stream << std::boolalpha
+           << "IPv6AcceptRA=" << EthernetInterfaceIntf::ipv6AcceptRA() << "\n";
+
+    // Add the VLAN entry
+    for (const auto& intf : vlanInterfaces)
+    {
+        stream << "VLAN=" << intf.second->EthernetInterface::interfaceName()
+               << "\n";
+    }
+    // Add the NTP server
+    for (const auto& ntp : EthernetInterfaceIntf::staticNTPServers())
+    {
+        stream << "NTP=" << ntp << "\n";
+    }
+
+    // Add the DNS entry
+    for (const auto& dns : EthernetInterfaceIntf::staticNameServers())
+    {
+        stream << "DNS=" << dns << "\n";
+    }
+
+    // Add the DHCP entry
+    stream << "DHCP="s +
+                  mapDHCPToSystemd[EthernetInterfaceIntf::dhcpEnabled()] + "\n";
+
+    // Static IP addresses
+    for (const auto& addr : addrs)
+    {
+        if (originIsManuallyAssigned(addr.second->origin()) &&
+            !dhcpIsEnabled(addr.second->type()))
         {
             auto& vlans = network["VLAN"];
             for (const auto& [_, intf] : manager.get().interfaces)
