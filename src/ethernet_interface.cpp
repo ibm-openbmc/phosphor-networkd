@@ -1009,11 +1009,19 @@ void EthernetInterface::writeConfigurationFile()
 
     // write the network section
     stream << "[Network]\n";
+
+    // do not write eth1 linklocal as it adds routing confusions
+    // with eth0 route.
+    // https://github.com/systemd/systemd/issues/23595
+    // TODO: Remove this check once 23595 is resolved
+    if (interfaceName() != "eth1")
+    {
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-    stream << "LinkLocalAddressing=yes\n";
+        stream << "LinkLocalAddressing=yes\n";
 #else
-    stream << "LinkLocalAddressing=no\n";
+        stream << "LinkLocalAddressing=no\n";
 #endif
+    }
     stream << std::boolalpha
            << "IPv6AcceptRA=" << EthernetInterfaceIntf::ipv6AcceptRA() << "\n";
 
