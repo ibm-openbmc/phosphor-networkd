@@ -1067,7 +1067,7 @@ void EthernetInterface::writeConfigurationFile()
     stream << std::get<1>(
         mapDHCPToSystemd[EthernetInterfaceIntf::dhcpEnabled()]);
     stream << "\n";
-
+    stream << "[IPv6AcceptRA]\n";
     stream << "DHCPv6Client=";
     stream << std::get<2>(
         mapDHCPToSystemd[EthernetInterfaceIntf::dhcpEnabled()]);
