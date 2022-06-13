@@ -712,7 +712,32 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
 
 void EthernetInterface::loadNTPServers()
 {
-    EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
+    std::string timeSyncMethod{};
+    auto method = bus.new_method_call("xyz.openbmc_project.Settings",
+                                      "/xyz/openbmc_project/time/sync_method",
+                                      PROPERTY_INTERFACE, METHOD_GET);
+
+    method.append("xyz.openbmc_project.Time.Synchronization", "TimeSyncMethod");
+
+    try
+    {
+        auto reply = bus.call(method);
+        std::variant<std::string> response;
+        reply.read(response);
+        timeSyncMethod = std::get<std::string>(response);
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        log<level::ERR>(
+            "Failed to get NTP TimeSyncMethod from Systemd Settings");
+    }
+
+    // Read NTP servers from TimeSyncd only when NTP mode enabled.
+    // This check is needed to avoid TimeSyncd calls when Manual mode set.
+    if (timeSyncMethod == "xyz.openbmc_project.Time.Synchronization.Method.NTP")
+    {
+        EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
+    }
     EthernetInterfaceIntf::staticNTPServers(getstaticNTPServersFromConf());
 }
 
