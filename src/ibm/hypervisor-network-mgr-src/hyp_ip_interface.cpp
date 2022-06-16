@@ -181,32 +181,39 @@ void HypIPAddress::resetIPObjProps()
     // Reset the ip obj properties
     log<level::INFO>("Resetting the ip addr object properties");
 
-    std::string zeroIp = "0.0.0.0";
-    HypIP::address(zeroIp);
-    HypIP::gateway(zeroIp);
-    HypIP::prefixLength(0);
-    HypIP::origin(IP::AddressOrigin::Static);
-
-    std::string prefix = getHypPrefix();
-
-    std::string attrIpaddr = prefix + "ipaddr";
-    parent.setIpPropsInMap(attrIpaddr, zeroIp, "String");
-
-    std::string attrPrefixLen = prefix + "prefix_length";
-    parent.setIpPropsInMap(attrPrefixLen, 0, "Integer");
-
-    std::string attrGateway = prefix + "gateway";
-    parent.setIpPropsInMap(attrGateway, zeroIp, "String");
-
-    std::string attrMethod = prefix + "method";
+    std::string defaultIp;
+    uint8_t defaultPrefixLen = 0;
+    std::string defaultMethod;
     if (HypIP::type() == HypIP::Protocol::IPv4)
     {
-        parent.setIpPropsInMap(attrMethod, "IPv4Static", "String");
+        defaultIp = "0.0.0.0";
+        defaultMethod = "IPv4Static";
     }
     else if (HypIP::type() == HypIP::Protocol::IPv6)
     {
-        parent.setIpPropsInMap(attrMethod, "IPv6Static", "String");
+        defaultIp = "::";
+        defaultPrefixLen = 128;
+        defaultMethod = "IPv6Static";
     }
+    HypIP::address(defaultIp);
+    HypIP::gateway(defaultIp);
+    HypIP::prefixLength(defaultPrefixLen);
+    HypIP::origin(IP::AddressOrigin::Static);
+
+    // Update in the local copy of the bios table
+    std::string prefix = getHypPrefix();
+
+    std::string attrIpaddr = prefix + "ipaddr";
+    parent.setIpPropsInMap(attrIpaddr, defaultIp, "String");
+
+    std::string attrGateway = prefix + "gateway";
+    parent.setIpPropsInMap(attrGateway, defaultIp, "String");
+
+    std::string attrPrefixLen = prefix + "prefix_length";
+    parent.setIpPropsInMap(attrPrefixLen, defaultPrefixLen, "Integer");
+
+    std::string attrMethod = prefix + "method";
+    parent.setIpPropsInMap(attrMethod, defaultMethod, "String");
 }
 
 void HypIPAddress::resetBaseBiosTableAttrs()
