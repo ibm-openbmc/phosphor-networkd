@@ -132,22 +132,80 @@ void HypEthInterface::watchBaseBiosTable()
                 DHCPConf dhcpState = ethObj->dhcpEnabled();
 
                 if ((dhcpState == HypEthInterface::DHCPConf::none) &&
-                    (dhcpEnabled == "IPv4DHCP"))
+                    ((dhcpEnabled == "IPv4DHCP") ||
+                     (dhcpEnabled == "IPv6DHCP") || (dhcpEnabled == "SLAAC")))
                 {
                     // There is a change in bios table method attribute (changed
                     // to dhcp) but dbus property contains static Change the
-                    // dbus property to dhcp
+                    // corresponding dbus property to dhcp
                     log<level::INFO>("Setting dhcp on the dbus object");
-                    ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                    if (dhcpEnabled == "IPv4DHCP")
+                    {
+                        ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                    }
+                    else if (dhcpEnabled == "IPv6DHCP")
+                    {
+                        ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v6);
+                    }
+                    else if (dhcpEnabled == "SLAAC")
+                    {
+                        ethObj->dhcpEnabled(
+                            HypEthInterface::DHCPConf::v6stateless);
+                    }
                 }
                 else if ((dhcpState != HypEthInterface::DHCPConf::none) &&
-                         (dhcpEnabled == "IPv4Static"))
+                         ((dhcpEnabled == "IPv4Static") ||
+                          (dhcpEnabled == "IPv6Static")))
                 {
                     // There is a change in bios table method attribute (changed
                     // to static) but dbus property contains dhcp Change the
-                    // dbus property to static
-                    log<level::INFO>("Setting static on the dbus object");
-                    ethObj->dhcpEnabled(HypEthInterface::DHCPConf::none);
+                    // corresponding dbus property to static
+
+                    if (dhcpEnabled == "IPv4Static")
+                    {
+                        if ((dhcpState == HypEthInterface::DHCPConf::v6) ||
+                            (dhcpState ==
+                             HypEthInterface::DHCPConf::v6stateless))
+                        {
+                            // no change
+                        }
+                        else if (dhcpState == HypEthInterface::DHCPConf::both)
+                        {
+                            ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v6);
+                        }
+                        else if (dhcpState ==
+                                 HypEthInterface::DHCPConf::v4v6stateless)
+                        {
+                            ethObj->dhcpEnabled(
+                                HypEthInterface::DHCPConf::v6stateless);
+                        }
+                        else if (dhcpState == HypEthInterface::DHCPConf::v4)
+                        {
+                            ethObj->dhcpEnabled(
+                                HypEthInterface::DHCPConf::none);
+                        }
+                    }
+                    else if (dhcpEnabled == "IPv6Static")
+                    {
+                        if (dhcpState == HypEthInterface::DHCPConf::v4)
+                        {
+                            // no change
+                        }
+                        else if ((dhcpState ==
+                                  HypEthInterface::DHCPConf::both) ||
+                                 (dhcpState ==
+                                  HypEthInterface::DHCPConf::v4v6stateless))
+                        {
+                            ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                        }
+                        if ((dhcpState == HypEthInterface::DHCPConf::v6) ||
+                            (dhcpState ==
+                             HypEthInterface::DHCPConf::v6stateless))
+                        {
+                            ethObj->dhcpEnabled(
+                                HypEthInterface::DHCPConf::none);
+                        }
+                    }
                 }
 
                 auto ipAddrs = ethObj->addrs;
@@ -336,11 +394,12 @@ void HypEthInterface::setBiosPropInDbus(
     else if (attrName == "Origin")
     {
         std::string method = std::get<std::string>(attrValue);
-        if (method == "IPv4Static")
+        if ((method == "IPv4Static") || (method == "IPv6Static"))
         {
             ipObj->origin(HypIP::AddressOrigin::Static);
         }
-        if (method == "IPv4DHCP")
+        if ((method == "IPv4DHCP") || (method == "IPv6DHCP") ||
+            (method == "SLAAC"))
         {
             ipObj->origin(HypIP::AddressOrigin::DHCP);
         }
@@ -463,6 +522,10 @@ void HypEthInterface::createIPAddressObjects()
         return;
     }
 
+    bool v4DhcpEnabled = false;
+    bool v6DhcpEnabled = false;
+    bool slaacEnabled = false;
+
     for (std::string protocol : {"ipv4", "ipv6"})
     {
         std::string vmi_prefix = "vmi_" + intfLabel + "_" + protocol + "_";
@@ -481,12 +544,17 @@ void HypEthInterface::createIPAddressObjects()
                 ipOrigin = IP::AddressOrigin::DHCP;
                 if (protocol == "ipv4")
                 {
-                    HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                    v4DhcpEnabled = true;
                 }
                 else if (protocol == "ipv6")
                 {
-                    HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v6);
+                    v6DhcpEnabled = true;
                 }
+            }
+            else if ((ipType.find("SLAAC") != std::string::npos) &&
+                     (protocol == "ipv6"))
+            {
+                slaacEnabled = true;
             }
             else
             {
@@ -533,6 +601,36 @@ void HypEthInterface::createIPAddressObjects()
                           *this, ipProtocol, ipAddr, ipOrigin, ipPrefixLength,
                           ipGateway, intfLabel));
     }
+    // Set dhcpEnabled property
+    if (v4DhcpEnabled)
+    {
+        if (v6DhcpEnabled)
+        {
+            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::both);
+        }
+        else if (slaacEnabled)
+        {
+            HypEthernetIntf::dhcpEnabled(
+                HypEthInterface::DHCPConf::v4v6stateless);
+        }
+        else
+        {
+            // !v6DhcpEnabled && !slaacEnabled
+            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
+        }
+    }
+    else
+    {
+        if (v6DhcpEnabled)
+        {
+            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v6);
+        }
+        else if (slaacEnabled)
+        {
+            HypEthernetIntf::dhcpEnabled(
+                HypEthInterface::DHCPConf::v6stateless);
+        }
+    }
 }
 
 void HypEthInterface::disableDHCP(HypIP::Protocol protocol)
@@ -554,7 +652,18 @@ void HypEthInterface::disableDHCP(HypIP::Protocol protocol)
     {
         dhcpEnabled(HypEthInterface::DHCPConf::none);
     }
-    else if ((dhcpState == HypEthInterface::DHCPConf::v6) &&
+    else if ((dhcpState == HypEthInterface::DHCPConf::v4v6stateless) &&
+             (protocol == HypIP::Protocol::IPv4))
+    {
+        dhcpEnabled(HypEthInterface::DHCPConf::v6stateless);
+    }
+    else if ((dhcpState == HypEthInterface::DHCPConf::v4v6stateless) &&
+             (protocol == HypIP::Protocol::IPv6))
+    {
+        dhcpEnabled(HypEthInterface::DHCPConf::v4);
+    }
+    else if (((dhcpState == HypEthInterface::DHCPConf::v6) ||
+              (dhcpState == HypEthInterface::DHCPConf::v6stateless)) &&
              (protocol == HypIP::Protocol::IPv6))
     {
         dhcpEnabled(HypEthInterface::DHCPConf::none);
@@ -565,7 +674,11 @@ bool HypEthInterface::isDHCPEnabled(HypIP::Protocol family, bool ignoreProtocol)
 {
     return (
         (HypEthernetIntf::dhcpEnabled() == HypEthInterface::DHCPConf::both) ||
-        ((HypEthernetIntf::dhcpEnabled() == HypEthInterface::DHCPConf::v6) &&
+        (HypEthernetIntf::dhcpEnabled() ==
+         HypEthInterface::DHCPConf::v4v6stateless) ||
+        (((HypEthernetIntf::dhcpEnabled() == HypEthInterface::DHCPConf::v6) ||
+          (HypEthernetIntf::dhcpEnabled() ==
+           HypEthInterface::DHCPConf::v6stateless)) &&
          ((family == HypIP::Protocol::IPv6) || ignoreProtocol)) ||
         ((HypEthernetIntf::dhcpEnabled() == HypEthInterface::DHCPConf::v4) &&
          ((family == HypIP::Protocol::IPv4) || ignoreProtocol)));
@@ -681,43 +794,136 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
 HypEthernetIntf::DHCPConf
     HypEthInterface::dhcpEnabled(HypEthernetIntf::DHCPConf value)
 {
-    if (value == HypEthernetIntf::dhcpEnabled())
+    HypEthernetIntf::DHCPConf oldValue = HypEthernetIntf::dhcpEnabled();
+
+    if (value == oldValue)
     {
         return value;
     }
 
-    HypEthernetIntf::dhcpEnabled(value);
-
     if (value != HypEthernetIntf::DHCPConf::none)
     {
+        bool v4Enabled = false;
+        bool v6Enabled = false;
+        bool slaacEnabled = false;
+        HypEthernetIntf::DHCPConf newValue;
+
+        if (value == HypEthernetIntf::DHCPConf::v4)
+        {
+            if ((oldValue == HypEthernetIntf::DHCPConf::none) ||
+                (oldValue == value))
+            {
+                newValue = value;
+                v4Enabled = true;
+            }
+            else if ((oldValue == HypEthernetIntf::DHCPConf::v6stateless) ||
+                     (oldValue == HypEthernetIntf::DHCPConf::v4v6stateless))
+            {
+                newValue = HypEthernetIntf::DHCPConf::v4v6stateless;
+                v4Enabled = true;
+                slaacEnabled = true;
+            }
+            else
+            {
+                newValue = HypEthernetIntf::DHCPConf::both;
+                v4Enabled = true;
+                v6Enabled = true;
+            }
+        }
+        else if (value == HypEthernetIntf::DHCPConf::v6)
+        {
+            if ((oldValue == HypEthernetIntf::DHCPConf::none) ||
+                (oldValue == HypEthernetIntf::DHCPConf::v6stateless) ||
+                (oldValue == value))
+            {
+                newValue = value;
+                v6Enabled = true;
+            }
+            else
+            {
+                newValue = HypEthernetIntf::DHCPConf::both;
+                v4Enabled = true;
+                v6Enabled = true;
+            }
+        }
+        else if (value == HypEthernetIntf::DHCPConf::v6stateless)
+        {
+            if ((oldValue == HypEthernetIntf::DHCPConf::none) ||
+                (oldValue == HypEthernetIntf::DHCPConf::v6) ||
+                (oldValue == value))
+            {
+                newValue = value;
+                slaacEnabled = true;
+            }
+            else
+            {
+                newValue = HypEthernetIntf::DHCPConf::v4v6stateless;
+                v4Enabled = true;
+                slaacEnabled = true;
+            }
+        }
+        else if (value == HypEthernetIntf::DHCPConf::both)
+        {
+            newValue = HypEthernetIntf::DHCPConf::both;
+            v4Enabled = true;
+            v6Enabled = true;
+        }
+        else if (value == HypEthernetIntf::DHCPConf::v4v6stateless)
+        {
+            newValue = HypEthernetIntf::DHCPConf::v4v6stateless;
+            v4Enabled = true;
+            slaacEnabled = true;
+        }
+
+        // Set dhcpEnabled value
+        HypEthernetIntf::dhcpEnabled(newValue);
+
+        PendingAttributesType pendingAttributes;
+        std::shared_ptr<phosphor::network::HypIPAddress> ipObj;
         for (auto itr : addrs)
         {
-            auto ipObj = itr.second;
+            ipObj = itr.second;
 
             std::string method;
-            if (ipObj->type() == HypIP::Protocol::IPv4)
+            if ((ipObj->type() == HypIP::Protocol::IPv4) && v4Enabled)
             {
                 method = "IPv4DHCP";
+                v4Enabled = false;
             }
             else if (ipObj->type() == HypIP::Protocol::IPv6)
             {
-                method = "IPv6DHCP";
+                if (slaacEnabled)
+                {
+                    method = "SLAAC";
+                    slaacEnabled = false;
+                }
+                else if (v6Enabled)
+                {
+                    method = "IPv6DHCP";
+                    v6Enabled = false;
+                }
             }
 
-            PendingAttributesType pendingAttributes;
-            pendingAttributes.insert_or_assign(
-                ipObj->mapDbusToBiosAttr("origin"),
-                std::make_tuple(biosEnumType, method));
-            ipObj->updateBiosPendingAttrs(pendingAttributes);
-            log<level::INFO>("Updating the ip address properties");
-            break;
+            if (!method.empty())
+            {
+                pendingAttributes.insert_or_assign(
+                    ipObj->mapDbusToBiosAttr("origin"),
+                    std::make_tuple(biosEnumType, method));
+            }
         }
+        log<level::INFO>("Updating the ip address properties");
+        ipObj->updateBiosPendingAttrs(pendingAttributes);
     }
     else
     {
+        // Set dhcpEnabled value
+        HypEthernetIntf::dhcpEnabled(HypEthernetIntf::DHCPConf::none);
+
+        PendingAttributesType pendingAttributes;
+        std::shared_ptr<phosphor::network::HypIPAddress> ipObj;
         for (auto itr : addrs)
         {
-            auto ipObj = itr.second;
+            ipObj = itr.second;
 
             std::string method;
             if (ipObj->type() == HypIP::Protocol::IPv4)
@@ -729,14 +935,16 @@ HypEthernetIntf::DHCPConf
                 method = "IPv6Static";
             }
 
-            PendingAttributesType pendingAttributes;
             pendingAttributes.insert_or_assign(
                 ipObj->mapDbusToBiosAttr("origin"),
                 std::make_tuple(biosEnumType, method));
-            ipObj->updateBiosPendingAttrs(pendingAttributes);
-            ipObj->resetBaseBiosTableAttrs();
+        }
+        ipObj->updateBiosPendingAttrs(pendingAttributes);
 
-            break;
+        // Reset values of local copy of bios table to default
+        for (auto itr : addrs)
+        {
+            ipObj->resetBaseBiosTableAttrs();
         }
     }
 
