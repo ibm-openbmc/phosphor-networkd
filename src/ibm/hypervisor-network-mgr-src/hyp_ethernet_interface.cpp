@@ -547,7 +547,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
     }
 
     if (!isValidPrefix(AF_INET, prefixLength) &&
-        !isValidPrefix(AF_INET6, prefixLength))
+        !isValidPrefix(AF_INET6, prefixLength) && prefixLength != 0)
     {
         log<level::ERR>("PrefixLength is not correct "),
             entry("PREFIXLENGTH=%" PRIu8, prefixLength);
