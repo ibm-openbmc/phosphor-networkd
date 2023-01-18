@@ -9,8 +9,6 @@
 
 using sdbusplus::exception::SdBusError;
 
-class HypNetworkMgr;
-
 namespace phosphor
 {
 namespace network
@@ -216,9 +214,9 @@ void HypNetworkMgr::setBIOSTableAttrs()
     }
 }
 
-biosTableType HypNetworkMgr::getBIOSTableAttrs()
+const ethIntfMapType& HypNetworkMgr::getEthIntfList()
 {
-    return biosTableAttrs;
+    return interfaces;
 }
 
 void HypNetworkMgr::createIfObjects()
@@ -235,14 +233,28 @@ void HypNetworkMgr::createIfObjects()
     // created during init time to support the static
     // network configurations on the both.
     // create eth0 and eth1 objects
-    log<level::INFO>("Create eth0 and eth1 objects");
+    log<level::INFO>("Creating eth0 and eth1 objects");
+    interfaces.emplace("eth0",
+                       std::make_unique<HypEthInterface>(
+                           bus, (objectPath + "/eth0").c_str(), "eth0", *this));
+    interfaces.emplace("eth1",
+                       std::make_unique<HypEthInterface>(
+                           bus, (objectPath + "/eth1").c_str(), "eth1", *this));
+
+    // Create ip address objects for each ethernet interface
+    interfaces["eth0"]->createIPAddressObjects();
+    interfaces["eth1"]->createIPAddressObjects();
+
+    // Call watch method to register for properties changed signal
+    // This method can be called only once
+    interfaces["eth0"]->watchBaseBiosTable();
 }
 
 void HypNetworkMgr::createSysConfObj()
 {
     systemConf.reset(nullptr);
-    this->systemConf = std::make_unique<phosphor::network::HypSysConfig>(
-        bus, objectPath + "/config", *this);
+    this->systemConf =
+        std::make_unique<HypSysConfig>(bus, objectPath + "/config", *this);
 }
 
 } // namespace network
