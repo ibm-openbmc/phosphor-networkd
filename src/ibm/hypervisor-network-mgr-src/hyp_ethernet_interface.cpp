@@ -1,4 +1,5 @@
 #include "hyp_ethernet_interface.hpp"
+#include "util.hpp"
 
 class HypEthInterface;
 
