@@ -1,4 +1,5 @@
 #include "hyp_ip_interface.hpp"
+#include "util.hpp"
 
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>

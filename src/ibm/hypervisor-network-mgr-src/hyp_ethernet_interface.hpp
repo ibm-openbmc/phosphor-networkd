@@ -28,6 +28,8 @@ using CreateIface = sdbusplus::server::object::object<
     sdbusplus::xyz::openbmc_project::Network::server::EthernetInterface,
     sdbusplus::xyz::openbmc_project::Network::IP::server::Create>;
 
+using biosTableRetAttrValueType = std::variant<std::string, int64_t>;
+
 using biosTableType = std::map<std::string, std::variant<int64_t, std::string>>;
 
 using HypEthernetIntf =
