@@ -467,7 +467,7 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
 void EthernetInterface::loadNTPServers(const config::Parser& config)
 {
     std::string timeSyncMethod{};
-    auto method = bus.new_method_call("xyz.openbmc_project.Settings",
+    auto method = bus.get().new_method_call("xyz.openbmc_project.Settings",
                                       "/xyz/openbmc_project/time/sync_method",
                                       PROPERTY_INTERFACE, METHOD_GET);
 
@@ -475,7 +475,7 @@ void EthernetInterface::loadNTPServers(const config::Parser& config)
 
     try
     {
-        auto reply = bus.call(method);
+        auto reply = bus.get().call(method);
         std::variant<std::string> response;
         reply.read(response);
         timeSyncMethod = std::get<std::string>(response);
