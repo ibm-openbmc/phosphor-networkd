@@ -120,6 +120,12 @@ class HypIPAddress : public HypIPIfaces
      */
     bool enabled(bool value) override;
 
+    /** @brief Method to convert ip address to InAddrAny type
+     *  @param[in] ip - ip address of type string
+     *  @returns ip address of type InAddrAny
+     */
+    InAddrAny getIpAddress(std::string ip);
+
     using HypEnableIntf::enabled;
 
     using HypIP::address;

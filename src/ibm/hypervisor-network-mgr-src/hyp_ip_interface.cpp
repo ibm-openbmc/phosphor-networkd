@@ -206,6 +206,29 @@ void HypIPAddress::resetBaseBiosTableAttrs()
     updateBaseBiosTable(mapDbusToBiosAttr("prefixLength"), 0);
 }
 
+InAddrAny HypIPAddress::getIpAddress(std::string ip)
+{
+    try
+    {
+        switch (HypIP::type())
+        {
+            case HypIP::Protocol::IPv4:
+                return ToAddr<in_addr>{}(HypIP::address());
+            case HypIP::Protocol::IPv6:
+                return ToAddr<in6_addr>{}(HypIP::address());
+            default:
+                throw std::logic_error("Exhausted protocols");
+        }
+    }
+    catch (const std::exception& e)
+    {
+        auto msg = fmt::format("Invalid IP `{}`: {}\n", ip, e.what());
+        log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", ip.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("ipaddress"),
+                              Argument::ARGUMENT_VALUE(ip.c_str()));
+    }
+}
+
 std::string HypIPAddress::address(std::string ipAddress)
 {
     std::string ip = HypIP::address();
@@ -214,14 +237,7 @@ std::string HypIPAddress::address(std::string ipAddress)
         return ip;
     }
 
-    int addressFamily =
-        (HypIP::type() == HypIP::Protocol::IPv4) ? AF_INET : AF_INET6;
-    if (!isValidIP(addressFamily, ipAddress))
-    {
-        log<level::ERR>("Not a valid IP address"),
-            entry("ADDRESS=%s", ipAddress.c_str());
-        elog<NotAllowed>(NotAllowedArgument::REASON("Invalid Ip"));
-    }
+    InAddrAny addr = getIpAddress(ipAddress);
 
     ipAddress = HypIP::address(ipAddress);
 
@@ -251,14 +267,23 @@ uint8_t HypIPAddress::prefixLength(uint8_t value)
     {
         return length;
     }
-    int addressFamily =
-        (HypIP::type() == HypIP::Protocol::IPv4) ? AF_INET : AF_INET6;
-    if (!isValidPrefix(addressFamily, value))
+
+    InAddrAny addr = getIpAddress(HypIP::address());
+    IfAddr ifaddr;
+    try
     {
-        log<level::ERR>("PrefixLength is not correct "),
-            entry("PREFIXLENGTH=%" PRIu8, value);
-        elog<NotAllowed>(NotAllowedArgument::REASON("Invalid Prefixlength"));
+        ifaddr = {addr, value};
     }
+    catch (const std::exception& e)
+    {
+        auto msg =
+            fmt::format("Invalid prefix length `{}`: {}\n", value, e.what());
+        log<level::ERR>(msg.c_str(), entry("PREFIXLENGTH=%" PRIu8, value));
+        elog<InvalidArgument>(
+            Argument::ARGUMENT_NAME("prefixLength"),
+            Argument::ARGUMENT_VALUE(std::to_string(value).c_str()));
+    }
+
     value = HypIP::prefixLength(value);
 
     // update parent biosTableAttrs
@@ -286,13 +311,20 @@ std::string HypIPAddress::gateway(std::string gateway)
         // value is already existing
         return gw;
     }
-    int addressFamily =
-        (HypIP::type() == IP::Protocol::IPv4) ? AF_INET : AF_INET6;
-    if (!isValidIP(addressFamily, gateway))
+
+    try
     {
-        log<level::ERR>("Not a valid gateway"),
-            entry("ADDRESS=%s", gateway.c_str());
-        elog<NotAllowed>(NotAllowedArgument::REASON("Invalid Gateway"));
+        if (!gateway.empty())
+        {
+            gateway = std::to_string(ToAddr<in_addr>{}(gateway));
+        }
+    }
+    catch (const std::exception& e)
+    {
+        auto msg = fmt::format("Invalid v4 GW `{}`: {}", gateway, e.what());
+        log<level::ERR>(msg.c_str(), entry("GATEWAY=%s", gateway.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("GATEWAY"),
+                              Argument::ARGUMENT_VALUE(gateway.c_str()));
     }
 
     gateway = HypIP::gateway(gateway);
