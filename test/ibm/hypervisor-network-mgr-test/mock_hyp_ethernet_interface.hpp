@@ -53,22 +53,48 @@ class MockHypEthernetInterface : public HypEthInterface
 
         HypIP::AddressOrigin origin = HypIP::AddressOrigin::Static;
 
-        if (!isValidIP(AF_INET, ipaddress) && !isValidIP(AF_INET6, ipaddress))
+        InAddrAny addr;
+        try
         {
-            // Not a valid IP address
+            switch (protType)
+            {
+                case HypIP::Protocol::IPv4:
+                    addr = ToAddr<in_addr>{}(ipaddress);
+                    break;
+                case HypIP::Protocol::IPv6:
+                    addr = ToAddr<in6_addr>{}(ipaddress);
+                    break;
+                default:
+                    return false;
+            }
+        }
+        catch (const std::exception& e)
+        {
+            // Invalid ip address
+        }
+
+        IfAddr ifaddr;
+        try
+        {
+            ifaddr = {addr, prefixLength};
+        }
+        catch (const std::exception& e)
+        {
+            // Invalid prefix length
             return false;
         }
 
-        if (!isValidIP(AF_INET, gateway) && !isValidIP(AF_INET6, gateway))
+        std::string gw;
+        try
         {
-            // Not a valid gateway
-            return false;
+            if (!gateway.empty())
+            {
+                gw = std::to_string(ToAddr<in_addr>{}(gateway));
+            }
         }
-
-        if (!isValidPrefix(AF_INET, prefixLength) &&
-            !isValidPrefix(AF_INET6, prefixLength))
+        catch (const std::exception& e)
         {
-            // PrefixLength is not correct
+            // Invalid gateway
             return false;
         }
 
@@ -89,7 +115,7 @@ class MockHypEthernetInterface : public HypEthInterface
 
         addrs[intfLabel] = std::make_unique<HypIPAddress>(
             bus, (objPath).c_str(), *this, protType, ipaddress, origin,
-            prefixLength, gateway, "if0");
+            prefixLength, gw, "if0");
         return true;
     }
 

@@ -495,33 +495,57 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
 
     HypIP::AddressOrigin origin = HypIP::AddressOrigin::Static;
 
-    if (!isValidIP(AF_INET, ipaddress) && !isValidIP(AF_INET6, ipaddress))
+    InAddrAny addr;
+    try
     {
-        log<level::ERR>("Not a valid IP address"),
-            entry("ADDRESS=%s", ipaddress.c_str());
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Address"),
-                              Argument::ARGUMENT_VALUE(ipaddress.c_str()));
-        return sdbusplus::message::details::string_path_wrapper();
+        switch (protType)
+        {
+            case HypIP::Protocol::IPv4:
+                addr = ToAddr<in_addr>{}(ipaddress);
+                break;
+            case HypIP::Protocol::IPv6:
+                addr = ToAddr<in6_addr>{}(ipaddress);
+                break;
+            default:
+                throw std::logic_error("Exhausted protocols");
+        }
     }
-
-    if (!isValidIP(AF_INET, gateway) && !isValidIP(AF_INET6, gateway))
+    catch (const std::exception& e)
     {
-        log<level::ERR>("Not a valid gateway"),
-            entry("ADDRESS=%s", gateway.c_str());
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("Gateway"),
+        auto msg = fmt::format("Invalid IP `{}`: {}\n", ipaddress, e.what());
+        log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", ipaddress.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("ipaddress"),
                               Argument::ARGUMENT_VALUE(ipaddress.c_str()));
-        return sdbusplus::message::details::string_path_wrapper();
     }
-
-    if (!isValidPrefix(AF_INET, prefixLength) &&
-        !isValidPrefix(AF_INET6, prefixLength))
+    IfAddr ifaddr;
+    try
     {
-        log<level::ERR>("Prefix length is not correct "),
-            entry("PREFIXLENGTH=%" PRIu8, prefixLength);
+        ifaddr = {addr, prefixLength};
+    }
+    catch (const std::exception& e)
+    {
+        auto msg = fmt::format("Invalid prefix length `{}`: {}\n", prefixLength,
+                               e.what());
+        log<level::ERR>(msg.c_str(),
+                        entry("PREFIXLENGTH=%" PRIu8, prefixLength));
         elog<InvalidArgument>(
             Argument::ARGUMENT_NAME("prefixLength"),
             Argument::ARGUMENT_VALUE(std::to_string(prefixLength).c_str()));
-        return sdbusplus::message::details::string_path_wrapper();
+    }
+
+    try
+    {
+        if (!gateway.empty())
+        {
+            gateway = std::to_string(ToAddr<in_addr>{}(gateway));
+        }
+    }
+    catch (const std::exception& e)
+    {
+        auto msg = fmt::format("Invalid v4 GW `{}`: {}", gateway, e.what());
+        log<level::ERR>(msg.c_str(), entry("GATEWAY=%s", gateway.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("GATEWAY"),
+                              Argument::ARGUMENT_VALUE(gateway.c_str()));
     }
 
     const std::string intfLabel = getIntfLabel();
