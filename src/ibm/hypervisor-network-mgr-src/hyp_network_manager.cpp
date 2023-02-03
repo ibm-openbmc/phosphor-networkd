@@ -18,9 +18,14 @@ namespace phosphor
 {
 namespace network
 {
+
 using namespace phosphor::logging;
 using InternalFailure =
     sdbusplus::xyz::openbmc_project::Common::Error::InternalFailure;
+
+constexpr auto mapperBus = "xyz.openbmc_project.ObjectMapper";
+constexpr auto mapperObj = "/xyz/openbmc_project/object_mapper";
+constexpr auto mapperIntf = "xyz.openbmc_project.ObjectMapper";
 
 const std::string intType = "Integer";
 const std::string strType = "String";
@@ -74,20 +79,22 @@ void HypNetworkMgr::setBIOSTableAttr(
             }
         }
     }
-    else
-    {
-        log<level::INFO>(
-            "setBIOSTableAttr: Attribute is not found in biosTableAttrs"),
-            entry("attrName : ", attrName.c_str());
-    }
 }
 
-void HypNetworkMgr::setDefaultBIOSTableAttrsOnIntf(const std::string& intf)
+void HypNetworkMgr::setIf0DefaultBIOSTableAttrs()
 {
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_ipaddr", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_gateway", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_prefix_length", 0);
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_method", "IPv4Static");
+    biosTableAttrs.emplace("vmi_if0_ipv4_ipaddr", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if0_ipv4_gateway", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if0_ipv4_prefix_length", 0);
+    biosTableAttrs.emplace("vmi_if0_ipv4_method", "IPv4Static");
+}
+
+void HypNetworkMgr::setIf1DefaultBIOSTableAttrs()
+{
+    biosTableAttrs.emplace("vmi_if1_ipv4_ipaddr", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if1_ipv4_gateway", "0.0.0.0");
+    biosTableAttrs.emplace("vmi_if1_ipv4_prefix_length", 0);
+    biosTableAttrs.emplace("vmi_if1_ipv4_method", "IPv4Static");
 }
 
 void HypNetworkMgr::setDefaultHostnameInBIOSTableAttrs()
@@ -101,10 +108,6 @@ void HypNetworkMgr::setBIOSTableAttrs()
     {
         constexpr auto biosMgrIntf = "xyz.openbmc_project.BIOSConfig.Manager";
         constexpr auto biosMgrObj = "/xyz/openbmc_project/bios_config";
-
-        constexpr auto mapperBus = "xyz.openbmc_project.ObjectMapper";
-        constexpr auto mapperObj = "/xyz/openbmc_project/object_mapper";
-        constexpr auto mapperIntf = "xyz.openbmc_project.ObjectMapper";
 
         std::vector<std::string> interfaces;
         interfaces.emplace_back(biosMgrIntf);
@@ -224,6 +227,11 @@ biosTableType HypNetworkMgr::getBIOSTableAttrs()
     return biosTableAttrs;
 }
 
+ethIntfMapType HypNetworkMgr::getEthIntfList()
+{
+    return interfaces;
+}
+
 void HypNetworkMgr::createIfObjects()
 {
     setBIOSTableAttrs();
@@ -238,7 +246,13 @@ void HypNetworkMgr::createIfObjects()
     // created during init time to support the static
     // network configurations on the both.
     // create eth0 and eth1 objects
-    log<level::INFO>("Create eth0 and eth1 objects");
+    log<level::INFO>("Creating eth0 and eth1 objects");
+    interfaces.emplace("eth0",
+                       std::make_shared<phosphor::network::HypEthInterface>(
+                           bus, (objectPath + "/eth0").c_str(), "eth0", *this));
+    interfaces.emplace("eth1",
+                       std::make_shared<phosphor::network::HypEthInterface>(
+                           bus, (objectPath + "/eth1").c_str(), "eth1", *this));
 }
 
 void HypNetworkMgr::createSysConfObj()
