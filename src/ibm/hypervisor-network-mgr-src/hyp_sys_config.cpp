@@ -22,11 +22,14 @@ using InvalidArgumentMetadata = xyz::openbmc_project::Common::InvalidArgument;
 using SysConfigIntf =
     sdbusplus::xyz::openbmc_project::Network::server::SystemConfiguration;
 
-void HypSysConfig::setHostName()
+HypSysConfig::HypSysConfig(sdbusplus::bus::bus& bus, const std::string& objPath,
+                           HypNetworkMgr& parent) :
+    Iface(bus, objPath.c_str(), Iface::action::defer_emit),
+    bus(bus), manager(parent)
 {
     auto name = getHostNameFromBios();
 
-    SysConfigIntf::hostName(std::move(name));
+    SysConfigIntf::hostName(name);
 }
 
 std::string HypSysConfig::hostName(std::string name)
@@ -67,10 +70,10 @@ std::string HypSysConfig::getHostNameFromBios() const
         log<level::ERR>("Failed to get the hostname from bios table",
                         entry("ERR=%s", ex.what()));
     }
-    return std::string();
+    return "";
 }
 
-void HypSysConfig::setHostNameInBios(const std::string& name)
+void HypSysConfig::setHostNameInBios(std::string name)
 {
     auto properties = bus.new_method_call(BIOS_SERVICE, BIOS_OBJPATH,
                                           BIOS_MGR_INTF, "SetAttribute");

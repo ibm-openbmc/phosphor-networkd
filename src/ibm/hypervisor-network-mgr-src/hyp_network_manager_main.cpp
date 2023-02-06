@@ -12,7 +12,7 @@ int main(int /*argc*/, char** /*argv*/)
     auto bus = sdbusplus::bus::new_default();
 
     // Add sdbusplus ObjectManager
-    sdbusplus::server::manager_t objManager(bus, DEFAULT_HYP_NW_OBJPATH);
+    sdbusplus::server::manager::manager objManager(bus, DEFAULT_HYP_NW_OBJPATH);
 
     // Get default event loop
     auto event = sdeventplus::Event::get_default();
@@ -23,15 +23,6 @@ int main(int /*argc*/, char** /*argv*/)
     // Create hypervisor network manager dbus object
     phosphor::network::HypNetworkMgr manager(bus, event,
                                              DEFAULT_HYP_NW_OBJPATH);
-
-    // Create the hypervisor eth interface objects
-    manager.createIfObjects();
-
-    // Create the hypervisor system config object
-    manager.createSysConfObj();
-    const phosphor::network::SystemConfPtr& systemConfigObj =
-        manager.getSystemConf();
-    systemConfigObj->setHostName();
 
     bus.request_name(HYP_DEFAULT_NETWORK_BUSNAME);
 

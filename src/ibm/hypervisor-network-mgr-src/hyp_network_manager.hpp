@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hyp_ethernet_interface.hpp"
 #include "hyp_sys_config.hpp"
 #include "types.hpp"
 #include "util.hpp"
@@ -16,24 +17,23 @@ namespace network
 class HypEthInterface;
 class HypSysConfig;
 
-using biosAttrName = std::string;
-using biosAttrType = std::string;
-using biosAttrIsReadOnly = bool;
-using biosAttrDispName = std::string;
-using biosAttrHelpText = std::string;
-using biosAttrMenuPath = std::string;
-using biosAttrCurrValue = std::variant<int64_t, std::string>;
-using biosAttrDefaultValue = std::variant<int64_t, std::string>;
-using biosAttrOptions =
-    std::tuple<std::string, std::variant<int64_t, std::string>>;
+using biosTableType = std::map<std::string, std::variant<int64_t, std::string>>;
 
-using biosTableType = std::map<biosAttrName, biosAttrCurrValue>;
-using BiosBaseTableItemType =
-    std::pair<biosAttrName,
-              std::tuple<biosAttrType, biosAttrIsReadOnly, biosAttrDispName,
-                         biosAttrHelpText, biosAttrMenuPath, biosAttrCurrValue,
-                         biosAttrDefaultValue, std::vector<biosAttrOptions>>>;
-using BiosBaseTableType = std::vector<BiosBaseTableItemType>;
+using BiosBaseTableType = std::vector<std::pair<
+    std::string,
+    std::tuple<
+        std::string, bool, std::string, std::string, std::string,
+        std::variant<int64_t, std::string>, std::variant<int64_t, std::string>,
+        std::vector<
+            std::tuple<std::string, std::variant<int64_t, std::string>>>>>>;
+
+using BiosBaseTableItemType = std::pair<
+    std::string,
+    std::tuple<
+        std::string, bool, std::string, std::string, std::string,
+        std::variant<int64_t, std::string>, std::variant<int64_t, std::string>,
+        std::vector<
+            std::tuple<std::string, std::variant<int64_t, std::string>>>>>;
 
 enum BiosBaseTableIndex
 {
@@ -48,6 +48,7 @@ enum BiosBaseTableIndex
 };
 
 using SystemConfPtr = std::unique_ptr<HypSysConfig>;
+using ethIntfMapType = std::map<std::string, std::shared_ptr<HypEthInterface>>;
 
 /** @class Manager
  *  @brief Implementation for the
@@ -68,10 +69,17 @@ class HypNetworkMgr
      *  @param[in] event - event.
      *  @param[in] path - Path to attach at.
      */
-    HypNetworkMgr(sdbusplus::bus_t& bus, sdeventplus::Event& event,
+    HypNetworkMgr(sdbusplus::bus::bus& bus, sdeventplus::Event& event,
                   const char* path) :
         bus(bus),
-        event(event), objectPath(path){};
+        event(event), objectPath(path)
+    {
+        // Create the hypervisor eth interface objects
+        createIfObjects();
+
+        // Create system configuration obj
+        createSysConfObj();
+    };
 
     /** @brief Get the BaseBiosTable attributes
      *
@@ -91,16 +99,40 @@ class HypNetworkMgr
                           std::variant<std::string, int64_t> attrValue,
                           std::string attrType);
 
+    /** @brief Get the ethernet interfaces list data member
+     *
+     * @return ethernet interfaces list
+     */
+    ethIntfMapType getEthIntfList();
+
     /** @brief Method to set all the interface 0 attributes
      *         to its default value in biosTableAttrs data member
      */
-    void setDefaultBIOSTableAttrsOnIntf(const std::string& intf);
+    void setIf0DefaultBIOSTableAttrs();
+
+    /** @brief Method to set all the interface 1 attributes
+     *         to its default value in biosTableAttrs data member
+     */
+    void setIf1DefaultBIOSTableAttrs();
 
     /** @brief Method to set the hostname attribute
      *         to its default value in biosTableAttrs
      *         data member
      */
     void setDefaultHostnameInBIOSTableAttrs();
+
+  private:
+    /**
+     * @brief get Dbus Prop
+     *
+     * @param[in] objectName - dbus Object
+     * @param[in] interface - dbus Interface
+     * @param[in] kw - keyword under the interface
+     *
+     * @return dbus call response
+     */
+    auto getDBusProp(const std::string& objectName,
+                     const std::string& interface, const std::string& kw);
 
     /** @brief Fetch the interface and the ipaddress details
      *         from the Bios table and create the hyp ethernet interfaces
@@ -120,19 +152,6 @@ class HypNetworkMgr
         return systemConf;
     }
 
-  protected:
-    /**
-     * @brief get Dbus Prop
-     *
-     * @param[in] objectName - dbus Object
-     * @param[in] interface - dbus Interface
-     * @param[in] kw - keyword under the interface
-     *
-     * @return dbus call response
-     */
-    auto getDBusProp(const std::string& objectName,
-                     const std::string& interface, const std::string& kw);
-
     /** @brief Setter method for biosTableAttrs data member
      *         GET operation on the BIOS table to
      *         read all the hyp attrbutes (name, value pair)
@@ -141,7 +160,7 @@ class HypNetworkMgr
     void setBIOSTableAttrs();
 
     /** @brief sdbusplus DBus bus connection. */
-    sdbusplus::bus_t& bus;
+    sdbusplus::bus::bus& bus;
 
     /**  sdevent Event handle. */
     sdeventplus::Event& event;
@@ -158,7 +177,7 @@ class HypNetworkMgr
     std::map<std::string, std::shared_ptr<HypEthInterface>> interfaces;
 
     /** @brief map of bios table attrs and values */
-    std::map<biosAttrName, biosAttrCurrValue> biosTableAttrs;
+    std::map<std::string, std::variant<int64_t, std::string>> biosTableAttrs;
 };
 
 } // namespace network

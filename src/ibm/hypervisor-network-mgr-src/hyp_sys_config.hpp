@@ -16,7 +16,7 @@ namespace network
 using SysConfigIntf =
     sdbusplus::xyz::openbmc_project::Network::server::SystemConfiguration;
 
-using Iface = sdbusplus::server::object_t<SysConfigIntf>;
+using Iface = sdbusplus::server::object::object<SysConfigIntf>;
 
 class HypNetworkMgr; // forward declaration of network manager.
 
@@ -40,21 +40,15 @@ class HypSysConfig : public Iface
      *  @param[in] objPath - Path to attach at.
      *  @param[in] parent - Parent object.
      */
-    HypSysConfig(sdbusplus::bus_t& bus, const std::string& objPath,
-                 HypNetworkMgr& parent) :
-        Iface(bus, objPath.c_str(), Iface::action::defer_emit),
-        bus(bus), manager(parent){};
+    HypSysConfig(sdbusplus::bus::bus& bus, const std::string& objPath,
+                 HypNetworkMgr& parent);
 
     /** @brief set the hostname of the system.
      *  @param[in] name - host name of the system.
      */
     std::string hostName(std::string name) override;
 
-    /** @brief get hostname from bios and set the data member
-     */
-    void setHostName();
-
-  protected:
+  private:
     /** @brief get the hostname from the system by doing
      *         dbus call to hostnamed service.
      */
@@ -63,10 +57,10 @@ class HypSysConfig : public Iface
     /** @brief set the hostname set in dbus obj in the basebiostable
      *  @param[in] name - hostname that is set in dbus obj
      */
-    void setHostNameInBios(const std::string& name);
+    void setHostNameInBios(std::string name);
 
     /** @brief Persistent sdbusplus DBus bus connection. */
-    sdbusplus::bus_t& bus;
+    sdbusplus::bus::bus& bus;
 
     /** @brief Hyp Network Manager object. */
     HypNetworkMgr& manager;
