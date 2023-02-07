@@ -5,6 +5,7 @@
 #include "types.hpp"
 
 #include <filesystem>
+#include <map>
 
 namespace phosphor
 {
