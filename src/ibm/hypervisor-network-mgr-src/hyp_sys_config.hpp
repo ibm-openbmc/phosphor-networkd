@@ -48,7 +48,7 @@ class HypSysConfig : public Iface
      */
     std::string hostName(std::string name) override;
 
-  private:
+  protected:
     /** @brief get the hostname from the system by doing
      *         dbus call to hostnamed service.
      */

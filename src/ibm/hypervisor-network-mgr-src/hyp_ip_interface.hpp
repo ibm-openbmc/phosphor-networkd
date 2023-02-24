@@ -112,7 +112,7 @@ class HypIPAddress : public HypIPIfaces
 
     /** @brief Method to reset the base bios table attributes
      */
-    void resetBaseBiosTableAttrs();
+    void resetBaseBiosTableAttrs(std::string protocol);
 
     /** @brief Method to set the enabled prop onto dbus from the
      *         persisted file whenever the service starts
