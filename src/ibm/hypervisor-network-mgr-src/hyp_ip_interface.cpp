@@ -1,4 +1,5 @@
 #include "hyp_ip_interface.hpp"
+
 #include "util.hpp"
 
 #include <phosphor-logging/elog-errors.hpp>
@@ -176,34 +177,63 @@ void HypIPAddress::resetIPObjProps()
     // Reset the ip obj properties
     log<level::INFO>("Resetting the ip addr object properties");
 
-    std::string zeroIp = "0.0.0.0";
-    HypIP::address(zeroIp);
-    HypIP::gateway(zeroIp);
-    HypIP::prefixLength(0);
+    std::string defaultIp;
+    uint8_t defaultPrefixLen = 0;
+    std::string defaultMethod;
+    if (HypIP::type() == HypIP::Protocol::IPv4)
+    {
+        defaultIp = "0.0.0.0";
+        defaultMethod = "IPv4Static";
+    }
+    else if (HypIP::type() == HypIP::Protocol::IPv6)
+    {
+        defaultIp = "::";
+        defaultPrefixLen = 128;
+        defaultMethod = "IPv6Static";
+    }
+    HypIP::address(defaultIp);
+    HypIP::gateway(defaultIp);
+    HypIP::prefixLength(defaultPrefixLen);
     HypIP::origin(IP::AddressOrigin::Static);
 
     std::string prefix = getHypPrefix();
 
     std::string attrIpaddr = prefix + "ipaddr";
-    parent.setIpPropsInMap(attrIpaddr, zeroIp, "String");
-
-    std::string attrPrefixLen = prefix + "prefix_length";
-    parent.setIpPropsInMap(attrPrefixLen, 0, "Integer");
+    parent.setIpPropsInMap(attrIpaddr, defaultIp, "String");
 
     std::string attrGateway = prefix + "gateway";
-    parent.setIpPropsInMap(attrGateway, zeroIp, "String");
+    parent.setIpPropsInMap(attrGateway, defaultIp, "String");
+
+    std::string attrPrefixLen = prefix + "prefix_length";
+    parent.setIpPropsInMap(attrPrefixLen, defaultPrefixLen, "Integer");
 
     std::string attrMethod = prefix + "method";
-    parent.setIpPropsInMap(attrMethod, "IPv4Static", "String");
+    parent.setIpPropsInMap(attrMethod, defaultMethod, "String");
 }
 
-void HypIPAddress::resetBaseBiosTableAttrs()
+void HypIPAddress::resetBaseBiosTableAttrs(std::string protocol)
 {
     // clear all the entries
     log<level::INFO>("Resetting the bios table attrs of the ip object");
-    updateBaseBiosTable(mapDbusToBiosAttr("address"), "0.0.0.0");
-    updateBaseBiosTable(mapDbusToBiosAttr("gateway"), "0.0.0.0");
-    updateBaseBiosTable(mapDbusToBiosAttr("prefixLength"), 0);
+
+    if (protocol.empty())
+    {
+        protocol = convertProtocolToString(HypIP::type());
+        protocol = protocol.substr(protocol.rfind(".") + 1);
+    }
+
+    if (protocol == "IPv4")
+    {
+        updateBaseBiosTable(mapDbusToBiosAttr("address"), "0.0.0.0");
+        updateBaseBiosTable(mapDbusToBiosAttr("gateway"), "0.0.0.0");
+        updateBaseBiosTable(mapDbusToBiosAttr("prefixLength"), 0);
+    }
+    if (protocol == "IPv6")
+    {
+        updateBaseBiosTable(mapDbusToBiosAttr("address"), "::");
+        updateBaseBiosTable(mapDbusToBiosAttr("gateway"), "::");
+        updateBaseBiosTable(mapDbusToBiosAttr("prefixLength"), 128);
+    }
 }
 
 InAddrAny HypIPAddress::getIpAddress(std::string ip)
@@ -373,21 +403,49 @@ HypIP::AddressOrigin HypIPAddress::origin(HypIP::AddressOrigin origin)
     std::string originBiosAttr;
     if (originStr.substr(originStr.rfind(".") + 1) == "Static")
     {
-        originBiosAttr = "IPv4Static";
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            originBiosAttr = "IPv4Static";
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            originBiosAttr = "IPv6Static";
+        }
     }
     else if (originStr.substr(originStr.rfind(".") + 1) == "DHCP")
     {
-        originBiosAttr = "IPv4DHCP";
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            originBiosAttr = "IPv4DHCP";
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            originBiosAttr = "IPv6DHCP";
+        }
     }
 
     std::string currOriginValue;
     if (addrOrigin == HypIP::AddressOrigin::Static)
     {
-        currOriginValue = "IPv4Static";
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            currOriginValue = "IPv4Static";
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            currOriginValue = "IPv6Static";
+        }
     }
     else if (addrOrigin == HypIP::AddressOrigin::DHCP)
     {
-        currOriginValue = "IPv4DHCP";
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            currOriginValue = "IPv4DHCP";
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            currOriginValue = "IPv6DHCP";
+        }
     }
 
     origin = HypIP::origin(origin);
@@ -422,7 +480,14 @@ void HypIPAddress::delete_()
     resetIPObjProps();
 
     // update bios table attrs to default
-    resetBaseBiosTableAttrs();
+    if (HypIP::type() == HypIP::Protocol::IPv4)
+    {
+        resetBaseBiosTableAttrs("IPv4");
+    }
+    if (HypIP::type() == HypIP::Protocol::IPv6)
+    {
+        resetBaseBiosTableAttrs("IPv6");
+    }
 }
 
 } // namespace network

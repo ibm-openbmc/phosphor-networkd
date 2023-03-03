@@ -99,8 +99,11 @@ class HypNetworkMgr
 
     /** @brief Method to set all the interface 0 attributes
      *         to its default value in biosTableAttrs data member
+     *  @param[in] intf - interface if0/1
+     *  @param[in] protocol - ipv4/ipv6
      */
-    void setDefaultBIOSTableAttrsOnIntf(const std::string& intf);
+    void setDefaultBIOSTableAttrsOnIntf(const std::string& intf,
+                                        const std::string& protocol);
 
     /** @brief Method to set the hostname attribute
      *         to its default value in biosTableAttrs
