@@ -81,7 +81,7 @@ class HypIPAddress : public HypIPIfaces
     /** @brief Method that maps the dbus object's properties
      *        with properties of the bios table.
      *  @param[in] dbusProp - dbus property name
-     * @result bios table property equivalent to the dbus property.
+     *  @result bios table property equivalent to the dbus property.
      */
     std::string mapDbusToBiosAttr(std::string dbusProp);
 
@@ -105,8 +105,9 @@ class HypIPAddress : public HypIPIfaces
     void resetIPObjProps();
 
     /** @brief Method to reset the base bios table attributes
+     *  @param[in] protocol - IPv4/IPv6
      */
-    void resetBaseBiosTableAttrs();
+    void resetBaseBiosTableAttrs(std::string protocol);
 
     /** @brief Method to set the enabled prop onto dbus from the
      *         persisted file whenever the service starts
