@@ -751,7 +751,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
     else if (protType == HypIP::Protocol::IPv6)
     {
         protocol = "ipv6";
-        biosMethod = "IPv4DHCP";
+        biosMethod = "IPv6Static";
     }
 
     std::string objPath = objectPath + "/" + protocol + "/" + ipObjId;
@@ -976,20 +976,23 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
         while (itr != addrs.end())
         {
             std::string method;
-            if ((itr->second)->type() == HypIP::Protocol::IPv4)
+            if (((itr->second)->type() == HypIP::Protocol::IPv4) && ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
             {
                 method = "IPv4Static";
-                // ipObj->resetBaseBiosTableAttrs("IPv4");
+                (itr->second)->resetBaseBiosTableAttrs("IPv4");
             }
-            else if ((itr->second)->type() == HypIP::Protocol::IPv6)
+            else if (((itr->second)->type() == HypIP::Protocol::IPv6) && ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
             {
                 method = "IPv6Static";
-                // ipObj->resetBaseBiosTableAttrs("IPv6");
+                (itr->second)->resetBaseBiosTableAttrs("IPv6");
             }
 
-            pendingAttributes.insert_or_assign(
-                (itr->second)->mapDbusToBiosAttr("origin"),
-                std::make_tuple(biosEnumType, method));
+            if (!method.empty())
+            {
+                pendingAttributes.insert_or_assign(
+                    (itr->second)->mapDbusToBiosAttr("origin"),
+                    std::make_tuple(biosEnumType, method));
+            }
 
             if (std::next(itr) == addrs.end())
             {
@@ -998,11 +1001,6 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
             itr++;
         }
         (itr->second)->updateBiosPendingAttrs(pendingAttributes);
-        // Reset values of local copy of bios table to default
-        for (const auto& itr : addrs)
-        {
-            (itr.second)->resetBaseBiosTableAttrs(std::string());
-        }
     }
 
     return value;
