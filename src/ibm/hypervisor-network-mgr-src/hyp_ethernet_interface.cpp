@@ -147,19 +147,28 @@ void HypEthInterface::watchBaseBiosTable()
                     log<level::INFO>("Setting dhcp on the dbus object");
                     if (dhcpEnabled == "IPv4DHCP")
                     {
-                        ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
-                        ethObj->dhcp4(true);
+                        if (ethObj->dhcp4())
+                        {
+                            ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v4);
+                            ethObj->dhcp4(true);
+                        }
                     }
                     else if (dhcpEnabled == "IPv6DHCP")
                     {
-                        ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v6);
-                        ethObj->dhcp6(true);
+                        if (ethObj->dhcp6())
+                        {
+                            ethObj->dhcpEnabled(HypEthInterface::DHCPConf::v6);
+                            ethObj->dhcp6(true);
+                        }
                     }
                     else if (dhcpEnabled == "SLAAC")
                     {
-                        ethObj->dhcpEnabled(
-                            HypEthInterface::DHCPConf::v6stateless);
-                        ethObj->ipv6AcceptRA(true);
+                        if (ethObj->ipv6AcceptRA())
+                        {
+                            ethObj->dhcpEnabled(
+                                HypEthInterface::DHCPConf::v6stateless);
+                            ethObj->ipv6AcceptRA(true);
+                        }
                     }
                 }
                 else if ((dhcpState != HypEthInterface::DHCPConf::none) &&
@@ -570,8 +579,68 @@ void HypEthInterface::createIPAddressObjects()
                           *this, ipProtocol, ipAddr, ipOrigin, ipPrefixLength,
                           ipGateway, intfLabel));
     }
-    // Set dhcpEnabled property
-    if (dhcp4())
+}
+
+bool HypEthInterface::ipv6AcceptRA(bool value)
+{
+    auto currValue = ipv6AcceptRA();
+    if (currValue == value)
+    {
+        return value;
+    }
+
+    HypEthernetIntf::ipv6AcceptRA(value);
+    if (value)
+    {
+        if (dhcp4())
+        {
+            HypEthernetIntf::dhcpEnabled(
+                HypEthInterface::DHCPConf::v4v6stateless);
+        }
+        else
+        {
+            HypEthernetIntf::dhcpEnabled(
+                HypEthInterface::DHCPConf::v6stateless);
+        }
+    }
+    else
+    {
+        if (dhcp4())
+        {
+            if (dhcp6())
+            {
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::both);
+            }
+            else
+            {
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
+            }
+        }
+        else
+        {
+            if (dhcp6())
+            {
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v6);
+            }
+            else
+            {
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::none);
+            }
+        }
+    }
+    return value;
+}
+
+bool HypEthInterface::dhcp4(bool value)
+{
+    auto currValue = dhcp4();
+    if (currValue == value)
+    {
+        return value;
+    }
+
+    HypEthernetIntf::dhcp4(value);
+    if (value)
     {
         if (dhcp6())
         {
@@ -599,50 +668,57 @@ void HypEthInterface::createIPAddressObjects()
             HypEthernetIntf::dhcpEnabled(
                 HypEthInterface::DHCPConf::v6stateless);
         }
-    }
-}
-
-bool HypEthInterface::ipv6AcceptRA(bool value)
-{
-    auto currValue = ipv6AcceptRA();
-    if (currValue != value)
-    {
-        HypEthernetIntf::ipv6AcceptRA(value);
-    }
-    return value;
-}
-
-bool HypEthInterface::dhcp4(bool value)
-{
-    auto currValue = dhcp4();
-    if (currValue != value)
-    {
-        HypEthernetIntf::dhcp4(value);
-        if (value == false)
+        else
         {
             HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::none);
         }
-        else
-        {
-            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
-        }
     }
+
     return value;
 }
 
 bool HypEthInterface::dhcp6(bool value)
 {
     auto currValue = dhcp6();
-    if (currValue != value)
+    if (currValue == value)
     {
-        HypEthernetIntf::dhcp6(value);
-        if (value == false)
+        return value;
+    }
+
+    HypEthernetIntf::dhcp6(value);
+    if (value)
+    {
+        if (dhcp4())
         {
-            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::none);
+            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::both);
         }
         else
         {
             HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v6);
+        }
+    }
+    else
+    {
+        if (dhcp4())
+        {
+            if (ipv6AcceptRA())
+            {
+                HypEthernetIntf::dhcpEnabled(
+                    HypEthInterface::DHCPConf::v4v6stateless);
+            }
+            else
+            {
+                HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::v4);
+            }
+        }
+        else if (ipv6AcceptRA())
+        {
+            HypEthernetIntf::dhcpEnabled(
+                HypEthInterface::DHCPConf::v6stateless);
+        }
+        else
+        {
+            HypEthernetIntf::dhcpEnabled(HypEthInterface::DHCPConf::none);
         }
     }
     return value;
@@ -923,12 +999,15 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 if (v4Enabled)
                 {
                     method = "IPv4DHCP";
-                    v4Enabled = false;
+                    (itr->second)->origin(HypIP::AddressOrigin::DHCP);
                 }
                 else
                 {
-                    method = "IPv4Static";
-                    (itr->second)->resetBaseBiosTableAttrs("IPv4");
+                    if (!v6Enabled && !slaacEnabled)
+                    {
+                        method = "IPv4Static";
+                        (itr->second)->resetBaseBiosTableAttrs("IPv4");
+                    }
                 }
             }
             else if ((itr->second)->type() == HypIP::Protocol::IPv6)
@@ -936,17 +1015,19 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 if (slaacEnabled)
                 {
                     method = "SLAAC";
-                    slaacEnabled = false;
                 }
                 else if (v6Enabled)
                 {
                     method = "IPv6DHCP";
-                    v6Enabled = false;
+                    (itr->second)->origin(HypIP::AddressOrigin::DHCP);
                 }
                 else
                 {
-                    method = "IPv6Static";
-                    (itr->second)->resetBaseBiosTableAttrs("IPv6");
+                    if (!v4Enabled)
+                    {
+                        method = "IPv6Static";
+                        (itr->second)->resetBaseBiosTableAttrs("IPv6");
+                    }
                 }
             }
             if (!method.empty())
@@ -962,7 +1043,6 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
             }
             itr++;
         }
-        log<level::INFO>("Updating the ip address properties");
         (itr->second)->updateBiosPendingAttrs(pendingAttributes);
     }
     else
@@ -976,12 +1056,14 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
         while (itr != addrs.end())
         {
             std::string method;
-            if (((itr->second)->type() == HypIP::Protocol::IPv4) && ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
+            if (((itr->second)->type() == HypIP::Protocol::IPv4) &&
+                ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
             {
                 method = "IPv4Static";
                 (itr->second)->resetBaseBiosTableAttrs("IPv4");
             }
-            else if (((itr->second)->type() == HypIP::Protocol::IPv6) && ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
+            else if (((itr->second)->type() == HypIP::Protocol::IPv6) &&
+                     ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
             {
                 method = "IPv6Static";
                 (itr->second)->resetBaseBiosTableAttrs("IPv6");
