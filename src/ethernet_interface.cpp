@@ -142,8 +142,8 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                      std::string&& objPath,
                                      const config::Parser& config,
                                      bool enabled) :
-    Ifaces(bus, objPath.c_str(), Ifaces::action::defer_emit),
-    manager(manager), bus(bus), objPath(std::move(objPath))
+    Ifaces(bus, objPath.c_str(), Ifaces::action::defer_emit), manager(manager),
+    bus(bus), objPath(std::move(objPath))
 {
     interfaceName(*info.intf.name, true);
     auto dhcpVal = getDHCPValue(config);
@@ -784,6 +784,7 @@ bool EthernetInterface::nicEnabled(bool value)
 
 ServerList EthernetInterface::staticNameServers(ServerList value)
 {
+    std::vector<std::string> dnsUniqueValues;
     for (auto& ip : value)
     {
         try
@@ -798,19 +799,20 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("StaticNameserver"),
                                   Argument::ARGUMENT_VALUE(ip.c_str()));
         }
+        if (std::find(dnsUniqueValues.begin(), dnsUniqueValues.end(), ip) ==
+            dnsUniqueValues.end())
+        {
+            dnsUniqueValues.push_back(ip);
+        }
     }
-    try
-    {
-        EthernetInterfaceIntf::staticNameServers(value);
 
-        writeConfigurationFile();
-        manager.get().reloadConfigs();
-    }
-    catch (const InternalFailure& e)
-    {
-        log<level::ERR>("Exception processing DNS entries");
-    }
-    return EthernetInterfaceIntf::staticNameServers();
+    value =
+        EthernetInterfaceIntf::staticNameServers(std::move(dnsUniqueValues));
+
+    writeConfigurationFile();
+    manager.get().reloadConfigs();
+
+    return value;
 }
 
 void EthernetInterface::loadNTPServers(const config::Parser& config)
