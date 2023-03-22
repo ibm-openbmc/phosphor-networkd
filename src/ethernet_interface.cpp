@@ -393,8 +393,7 @@ EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
                                              value == DHCPConf::both);
     auto oldra = EthernetInterfaceIntf::ipv6AcceptRA();
     auto newra = EthernetInterfaceIntf::ipv6AcceptRA(
-        value == DHCPConf::v6stateless || value == DHCPConf::v4v6stateless ||
-        value == DHCPConf::v6 || value == DHCPConf::both);
+        value == DHCPConf::v6stateless || value == DHCPConf::v4v6stateless);
 
     if (old4 != new4 || old6 != new6 || oldra != newra)
     {
@@ -697,6 +696,11 @@ void EthernetInterface::writeConfigurationFile()
         lla.emplace_back("no");
 #endif
         network["IPv6AcceptRA"].emplace_back(ipv6AcceptRA() ? "true" : "false");
+        if (dhcp6())
+        {
+            config.map["DHCPv6"].emplace_back()["WithoutRA"].emplace_back(
+                "solicit");
+        }
         network["DHCP"].emplace_back(dhcp4() ? (dhcp6() ? "true" : "ipv4")
                                              : (dhcp6() ? "ipv6" : "false"));
         {
