@@ -393,8 +393,10 @@ HypIP::AddressOrigin HypIPAddress::origin(HypIP::AddressOrigin origin)
         convertAddressOriginToString(HypIP::AddressOrigin::DHCP);
     std::string staticStr =
         convertAddressOriginToString(HypIP::AddressOrigin::Static);
+    std::string slaacStr =
+        convertAddressOriginToString(HypIP::AddressOrigin::SLAAC);
 
-    if (originStr != dhcpStr && originStr != staticStr)
+    if (originStr != dhcpStr && originStr != staticStr && originStr != slaacStr)
     {
         log<level::ERR>("Not a valid origin");
         elog<NotAllowed>(NotAllowedArgument::REASON("Invalid Origin"));
@@ -423,6 +425,19 @@ HypIP::AddressOrigin HypIPAddress::origin(HypIP::AddressOrigin origin)
             originBiosAttr = "IPv6DHCP";
         }
     }
+    else if (originStr.substr(originStr.rfind(".") + 1) == "SLAAC")
+    {
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            log<level::ERR>("Not a valid origin for IPv4");
+            elog<NotAllowed>(
+                NotAllowedArgument::REASON("Invalid Origin for IPv4"));
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            originBiosAttr = "IPv6SLAAC";
+        }
+    }
 
     std::string currOriginValue;
     if (addrOrigin == HypIP::AddressOrigin::Static)
@@ -445,6 +460,19 @@ HypIP::AddressOrigin HypIPAddress::origin(HypIP::AddressOrigin origin)
         else if (HypIP::type() == HypIP::Protocol::IPv6)
         {
             currOriginValue = "IPv6DHCP";
+        }
+    }
+    else if (addrOrigin == HypIP::AddressOrigin::SLAAC)
+    {
+        if (HypIP::type() == HypIP::Protocol::IPv4)
+        {
+            log<level::ERR>("Not a valid origin for IPv4");
+            elog<NotAllowed>(
+                NotAllowedArgument::REASON("Invalid Origin for IPv4"));
+        }
+        else if (HypIP::type() == HypIP::Protocol::IPv6)
+        {
+            currOriginValue = "IPv6SLAAC";
         }
     }
 

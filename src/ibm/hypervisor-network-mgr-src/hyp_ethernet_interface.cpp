@@ -139,7 +139,8 @@ void HypEthInterface::watchBaseBiosTable()
                 DHCPConf dhcpState = ethObj->dhcpEnabled();
                 if ((dhcpState == HypEthInterface::DHCPConf::none) &&
                     ((dhcpEnabled == "IPv4DHCP") ||
-                     (dhcpEnabled == "IPv6DHCP") || (dhcpEnabled == "SLAAC")))
+                     (dhcpEnabled == "IPv6DHCP") ||
+                     (dhcpEnabled == "IPv6SLAAC")))
                 {
                     // There is a change in bios table method attribute (changed
                     // to dhcp) but dbus property contains static Change the
@@ -161,7 +162,7 @@ void HypEthInterface::watchBaseBiosTable()
                             ethObj->dhcp6(true);
                         }
                     }
-                    else if (dhcpEnabled == "SLAAC")
+                    else if (dhcpEnabled == "IPv6SLAAC")
                     {
                         if (ethObj->ipv6AcceptRA())
                         {
@@ -528,9 +529,10 @@ void HypEthInterface::createIPAddressObjects()
                     dhcp6(true);
                 }
             }
-            else if ((ipType.find("SLAAC") != std::string::npos) &&
+            else if ((ipType.find("IPv6SLAAC") != std::string::npos) &&
                      (protocol == "ipv6"))
             {
+                ipOrigin = HypIP::AddressOrigin::SLAAC;
                 ipv6AcceptRA(true);
             }
             else
@@ -1014,7 +1016,8 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
             {
                 if (slaacEnabled)
                 {
-                    method = "SLAAC";
+                    method = "IPv6SLAAC";
+                    (itr->second)->origin(HypIP::AddressOrigin::SLAAC);
                 }
                 else if (v6Enabled)
                 {
@@ -1060,12 +1063,15 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
             {
                 method = "IPv4Static";
+                (itr->second)->origin(HypIP::AddressOrigin::Static);
                 (itr->second)->resetBaseBiosTableAttrs("IPv4");
             }
             else if (((itr->second)->type() == HypIP::Protocol::IPv6) &&
-                     ((itr->second)->origin() == HypIP::AddressOrigin::DHCP))
+                     (((itr->second)->origin() == HypIP::AddressOrigin::DHCP) ||
+                      ((itr->second)->origin() == HypIP::AddressOrigin::SLAAC)))
             {
                 method = "IPv6Static";
+                (itr->second)->origin(HypIP::AddressOrigin::Static);
                 (itr->second)->resetBaseBiosTableAttrs("IPv6");
             }
 

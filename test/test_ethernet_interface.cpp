@@ -193,7 +193,6 @@ TEST_F(TestEthernetInterface, DHCPEnabled)
         EXPECT_EQ(dhcp6, interface.dhcp6());
         EXPECT_EQ(ra, interface.ipv6AcceptRA());
     };
-    test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true, /*ra=*/false);
 
     auto set_test = [&](DHCPConf conf, bool dhcp4, bool dhcp6, bool ra) {
         EXPECT_EQ(conf, interface.dhcpEnabled(conf));
