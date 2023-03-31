@@ -51,8 +51,8 @@ class TestEthernetInterface : public stdplus::gtest::TestWithTmp
         return interface.ip(addressType, ipaddress, subnetMask, "");
     }
 
-    auto creatStaicRouteObject(std::string destination, std::string& gateway,
-                               uint8_t prefixLength)
+    auto createStaticRouteObject(std::string destination, std::string gateway,
+                                 uint32_t prefixLength)
     {
         return interface.staticRoute(destination, gateway, prefixLength);
     }
@@ -193,68 +193,65 @@ TEST_F(TestEthernetInterface, DHCPEnabled)
         .WillRepeatedly(testing::Return());
 
     using DHCPConf = EthernetInterfaceIntf::DHCPConf;
-    auto test = [&](DHCPConf conf, bool dhcp4, bool dhcp6, bool ra) {
+    auto test = [&](DHCPConf conf, bool dhcp4, bool dhcp6) {
         EXPECT_EQ(conf, interface.dhcpEnabled());
         EXPECT_EQ(dhcp4, interface.dhcp4());
         EXPECT_EQ(dhcp6, interface.dhcp6());
-        EXPECT_EQ(ra, interface.ipv6AcceptRA());
     };
+    test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true);
 
-    auto set_test = [&](DHCPConf conf, bool dhcp4, bool dhcp6, bool ra) {
+    auto set_test = [&](DHCPConf conf, bool dhcp4, bool dhcp6) {
         EXPECT_EQ(conf, interface.dhcpEnabled(conf));
-        test(conf, dhcp4, dhcp6, ra);
+        test(conf, dhcp4, dhcp6);
     };
-    set_test(DHCPConf::none, /*dhcp4=*/false, /*dhcp6=*/false, /*ra=*/false);
-    set_test(DHCPConf::v4, /*dhcp4=*/true, /*dhcp6=*/false, /*ra=*/false);
-    set_test(DHCPConf::v6stateless, /*dhcp4=*/false, /*dhcp6=*/false,
-             /*ra=*/true);
-    set_test(DHCPConf::v6, /*dhcp4=*/false, /*dhcp6=*/true, /*ra=*/false);
-    set_test(DHCPConf::v4v6stateless, /*dhcp4=*/true, /*dhcp6=*/false,
-             /*ra=*/true);
-    set_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true, /*ra=*/false);
+    set_test(DHCPConf::none, /*dhcp4=*/false, /*dhcp6=*/false);
+    set_test(DHCPConf::v4, /*dhcp4=*/true, /*dhcp6=*/false);
+    set_test(DHCPConf::v6, /*dhcp4=*/false, /*dhcp6=*/true);
+    set_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true);
 
-    auto ind_test = [&](DHCPConf conf, bool dhcp4, bool dhcp6, bool ra) {
+    auto ind_test = [&](DHCPConf conf, bool dhcp4, bool dhcp6) {
         EXPECT_EQ(dhcp4, interface.dhcp4(dhcp4));
         EXPECT_EQ(dhcp6, interface.dhcp6(dhcp6));
-        EXPECT_EQ(ra, interface.ipv6AcceptRA(ra));
-        test(conf, dhcp4, dhcp6, ra);
+        test(conf, dhcp4, dhcp6);
     };
-    ind_test(DHCPConf::none, /*dhcp4=*/false, /*dhcp6=*/false, /*ra=*/false);
-    ind_test(DHCPConf::v4, /*dhcp4=*/true, /*dhcp6=*/false, /*ra=*/false);
-    ind_test(DHCPConf::v6stateless, /*dhcp4=*/false, /*dhcp6=*/false,
-             /*ra=*/true);
-    ind_test(DHCPConf::v6, /*dhcp4=*/false, /*dhcp6=*/true, /*ra=*/false);
-    set_test(DHCPConf::v6, /*dhcp4=*/false, /*dhcp6=*/true, /*ra=*/false);
-    ind_test(DHCPConf::v4v6stateless, /*dhcp4=*/true, /*dhcp6=*/false,
-             /*ra=*/true);
-    ind_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true, /*ra=*/false);
-    set_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true, /*ra=*/false);
+    ind_test(DHCPConf::none, /*dhcp4=*/false, /*dhcp6=*/false);
+    ind_test(DHCPConf::v4, /*dhcp4=*/true, /*dhcp6=*/false);
+    ind_test(DHCPConf::v6, /*dhcp4=*/false, /*dhcp6=*/true);
+    ind_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true);
+    set_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true);
+}
+
+TEST_F(TestEthernetInterface, IPv6AcceptRA)
+{
+    interface.ipv6AcceptRA(true);
+    EXPECT_TRUE(interface.ipv6AcceptRA());
+    interface.ipv6AcceptRA(false);
+    EXPECT_FALSE(interface.ipv6AcceptRA());
 }
 
 TEST_F(TestEthernetInterface, AddStaticRoute)
 {
-    createStaticRouteObject("10.10.10.10", 10.10.10.1, 24);
+    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
     EXPECT_THAT(interface.staticRoutes,
                 UnorderedElementsAre(Key(std::string("10.10.10.10"))));
 }
 
 TEST_F(TestEthernetInterface, AddMultipleStaticRoutes)
 {
-    createStaticRouteObject("10.10.10.10", 10.10.10.1, 24);
-    createStaticRouteObject("10.20.30.10", 10.20.30.1, 24);
-    EXPECT_THAT(
-        interface.staticRoutes,
-        UnorderedElementsAre(Key(std::string("10.10.10.10")),
-                             Key(std::string("10.20.30.10")));
+    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
+    createStaticRouteObject("10.20.30.10", "10.20.30.1", 24);
+    EXPECT_THAT(interface.staticRoutes,
+                UnorderedElementsAre(Key(std::string("10.10.10.10")),
+                                     Key(std::string("10.20.30.10"))));
 }
 
-TEST_F(TestEthernetInterface, DeleteIPAddress)
+TEST_F(TestEthernetInterface, DeleteStaticRoute)
 {
-    createStaticRouteObject("10.10.10.10", 10.10.10.1, 24);
-    createStaticRouteObject("10.20.30.10", 10.20.30.1, 24);
+    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
+    createStaticRouteObject("10.20.30.10", "10.20.30.1", 24);
 
-    interfaces.staticRoutes.at(std::string("10.10.10.10"))->delete_();
-    interfaces.staticRoutes.at(std::string("10.20.30.10"))->delete_();
+    interface.staticRoutes.at(std::string("10.10.10.10"))->delete_();
+    interface.staticRoutes.at(std::string("10.20.30.10"))->delete_();
     EXPECT_EQ(interface.staticRoutes.empty(), true);
 }
 
