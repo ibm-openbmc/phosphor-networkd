@@ -268,12 +268,12 @@ void HypEthInterface::watchBaseBiosTable()
                             // Ip address has changed
                             for (auto& addrs : ipAddrs)
                             {
-                                if ((((protocol == "ipv4") &&
-                                      ((addrs.first).find('.') !=
-                                       std::string::npos)) ||
-                                     ((protocol == "ipv6") &&
-                                      ((addrs.first).find("::") !=
-                                       std::string::npos))))
+                                if (((protocol == "ipv4") &&
+                                     ((addrs.first).find(".") !=
+                                      std::string::npos)) ||
+                                    ((protocol == "ipv6") &&
+                                     ((addrs.first).find(":") !=
+                                      std::string::npos)))
                                 {
                                     auto& ipObj = addrs.second;
                                     ipObj->HypIP::address(ipAddr);
@@ -305,12 +305,12 @@ void HypEthInterface::watchBaseBiosTable()
                             // Gateway has changed
                             for (auto& addrs : ipAddrs)
                             {
-                                if ((((protocol == "ipv4") &&
-                                      ((addrs.first).find('.') !=
-                                       std::string::npos)) ||
-                                     ((protocol == "ipv6") &&
-                                      ((addrs.first).find("::") !=
-                                       std::string::npos))))
+                                if (((protocol == "ipv4") &&
+                                     ((addrs.first).find(".") !=
+                                      std::string::npos)) ||
+                                    ((protocol == "ipv6") &&
+                                     ((addrs.first).find(":") !=
+                                      std::string::npos)))
                                 {
                                     auto& ipObj = addrs.second;
                                     ipObj->HypIP::gateway(gateway);
@@ -337,12 +337,12 @@ void HypEthInterface::watchBaseBiosTable()
                             // Prefix length has changed"
                             for (auto& addrs : ipAddrs)
                             {
-                                if ((((protocol == "ipv4") &&
-                                      ((addrs.first).find('.') !=
-                                       std::string::npos)) ||
-                                     ((protocol == "ipv6") &&
-                                      ((addrs.first).find("::") !=
-                                       std::string::npos))))
+                                if (((protocol == "ipv4") &&
+                                     ((addrs.first).find(".") !=
+                                      std::string::npos)) ||
+                                    ((protocol == "ipv6") &&
+                                     ((addrs.first).find(":") !=
+                                      std::string::npos)))
                                 {
                                     auto& ipObj = addrs.second;
                                     ipObj->HypIP::prefixLength(prefixLen);
@@ -931,6 +931,7 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
             {
                 newValue = value;
                 v4Enabled = true;
+                v6Enabled = false;
             }
             else if ((old4 == true && old6 == true) || old6)
             {
@@ -951,6 +952,7 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 (old4 == true && old6 == true) || oldra || old6)
             {
                 newValue = value;
+                v4Enabled = false;
                 v6Enabled = true;
             }
             else
@@ -1005,11 +1007,8 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 }
                 else
                 {
-                    if (!v6Enabled && !slaacEnabled)
-                    {
-                        method = "IPv4Static";
-                        (itr->second)->resetBaseBiosTableAttrs("IPv4");
-                    }
+                    method = "IPv4Static";
+                    (itr->second)->resetBaseBiosTableAttrs("IPv4");
                 }
             }
             else if ((itr->second)->type() == HypIP::Protocol::IPv6)
@@ -1026,11 +1025,8 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 }
                 else
                 {
-                    if (!v4Enabled)
-                    {
-                        method = "IPv6Static";
-                        (itr->second)->resetBaseBiosTableAttrs("IPv6");
-                    }
+                    method = "IPv6Static";
+                    (itr->second)->resetBaseBiosTableAttrs("IPv6");
                 }
             }
             if (!method.empty())
