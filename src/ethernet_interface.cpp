@@ -1066,9 +1066,15 @@ void EthernetInterface::writeConfigurationFile()
     }
 
     // Add the DNS entry
+    std::vector<std::string> dnsUniqueValues;
     for (const auto& dns : EthernetInterfaceIntf::staticNameServers())
     {
-        stream << "DNS=" << dns << "\n";
+        if (std::find(dnsUniqueValues.begin(), dnsUniqueValues.end(), dns) ==
+            dnsUniqueValues.end())
+        {
+            dnsUniqueValues.push_back(dns);
+            stream << "DNS=" << dns << "\n";
+        }
     }
 
     // Add the DHCP entry
