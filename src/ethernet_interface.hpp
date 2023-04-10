@@ -111,6 +111,10 @@ class EthernetInterface : public Ifaces
      */
     void loadNTPServers(const config::Parser& config);
 
+    /** @brief Function used to delete IPv4 static addresses
+     */
+    void deleteStaticIPv4Addresses();
+
     /** @brief Function used to load the nameservers.
      */
     void loadNameServers(const config::Parser& config);
@@ -216,6 +220,8 @@ class EthernetInterface : public Ifaces
      */
     std::string defaultGateway6(std::string gateway) override;
 
+    bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
+    void disableDHCP(IP::Protocol protocol);
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
     using EthernetInterfaceIntf::mtu;
