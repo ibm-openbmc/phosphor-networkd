@@ -1008,7 +1008,6 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv4Static";
-                    (itr->second)->resetBaseBiosTableAttrs("IPv4");
                 }
             }
             else if ((itr->second)->type() == HypIP::Protocol::IPv6)
@@ -1026,7 +1025,6 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv6Static";
-                    (itr->second)->resetBaseBiosTableAttrs("IPv6");
                 }
             }
             if (!method.empty())
