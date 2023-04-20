@@ -319,6 +319,20 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
 
     std::string objectPath =
         generateObjectPath(protType, ipaddress, prefixLength, gateway);
+
+    auto it = this->addrs.find(ipaddress);
+    if (it != this->addrs.end())
+    {
+        if (it->second->getObjPath() == objectPath)
+        {
+            return it->second->getObjPath();
+        }
+        else
+        {
+            this->addrs.erase(it);
+        }
+    }
+
     this->addrs.insert_or_assign(ipaddress,
                                  std::make_shared<phosphor::network::IPAddress>(
                                      bus, objectPath.c_str(), *this, protType,

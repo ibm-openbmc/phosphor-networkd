@@ -32,6 +32,7 @@ IPAddress::IPAddress(sdbusplus::bus::bus& bus, const char* objPath,
     IP::type(type);
     IP::origin(origin);
 
+    this->objectPath = objPath;
     // Emit deferred signal.
     emit_object_added();
 }
@@ -55,6 +56,12 @@ IP::AddressOrigin IPAddress::origin(IP::AddressOrigin /*origin*/)
 {
     elog<NotAllowed>(Reason("Property update is not allowed"));
 }
+
+std::string IPAddress::getObjPath()
+{
+    return objectPath;
+}
+
 void IPAddress::delete_()
 {
     if (origin() != IP::AddressOrigin::Static)
