@@ -56,6 +56,11 @@ class IPAddress : public IPIfaces
     IP::Protocol type(IP::Protocol type) override;
     IP::AddressOrigin origin(IP::AddressOrigin origin) override;
 
+    /** @brief Method to get d-bus object path.
+     *  @result object path.
+     */
+    std::string getObjPath();
+
     /** @brief Delete this d-bus object.
      */
     void delete_() override;
@@ -67,6 +72,8 @@ class IPAddress : public IPIfaces
     using IP::type;
 
   private:
+    std::string objectPath;
+
     /** @brief Parent Object. */
     EthernetInterface& parent;
 };
