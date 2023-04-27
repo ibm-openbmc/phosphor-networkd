@@ -15,5 +15,5 @@ option('persist-mac', type: 'boolean',
 option('force-sync-mac', type: 'boolean',
        description: 'Force sync mac address no matter is first boot or not')
 option('default-dhcp6-without-ra', type: 'boolean',
-       description: 'Force sync mac address no matter is first boot or not')
+       description: 'Enables stateful DHCPv6 by default')
 
