@@ -262,18 +262,27 @@ void EthernetInterface::addStaticRoute(const StaticRouteInfo& info)
         return;
     }
 
-    if (auto it = staticRoutes.find(*info.destination);
-        it != staticRoutes.end())
+    IP::Protocol protocolType;
+    if (*info.protocol == "IPv4")
+    {
+        protocolType = IP::Protocol::IPv4;
+    }
+    else if (*info.protocol == "IPv6")
+    {
+        protocolType = IP::Protocol::IPv6;
+    }
+
+    if (auto it = staticRoutes.find(*info.gateway); it != staticRoutes.end())
     {
         it->second->StaticRouteObj::gateway(*info.gateway);
     }
     else
     {
         staticRoutes.emplace(
-            *info.destination,
+            *info.gateway,
             std::make_unique<StaticRoute>(bus, std::string_view(objPath), *this,
                                           *info.destination, *info.gateway,
-                                          info.prefixLength));
+                                          info.prefixLength, protocolType));
     }
 }
 
@@ -445,37 +454,38 @@ ObjectPath EthernetInterface::neighbor(std::string ipAddress,
 
 ObjectPath EthernetInterface::staticRoute(std::string destination,
                                           std::string gateway,
-                                          uint32_t prefixLength)
+                                          size_t prefixLength,
+                                          IP::Protocol protocolType)
 {
     InAddrAny addr;
     try
     {
-        addr = ToAddr<InAddrAny>{}(destination);
+        addr = ToAddr<InAddrAny>{}(gateway);
     }
     catch (const std::exception& e)
     {
-        auto msg = fmt::format("Not a valid IP address `{}`: {}", destination,
-                               e.what());
-        log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", destination.c_str()));
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("destination"),
-                              Argument::ARGUMENT_VALUE(destination.c_str()));
+        auto msg =
+            fmt::format("Not a valid IP address `{}`: {}", gateway, e.what());
+        log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", gateway.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("gateway"),
+                              Argument::ARGUMENT_VALUE(gateway.c_str()));
     }
 
-    auto it = staticRoutes.find(destination);
+    auto it = staticRoutes.find(gateway);
     if (it == staticRoutes.end())
     {
         it = std::get<0>(staticRoutes.emplace(
-            destination,
-            std::make_unique<StaticRoute>(bus, std::string_view(objPath), *this,
-                                          destination, gateway, prefixLength)));
+            gateway, std::make_unique<StaticRoute>(
+                         bus, std::string_view(objPath), *this, destination,
+                         gateway, prefixLength, protocolType)));
     }
     else
     {
-        if (it->second->StaticRouteObj::destination() == destination)
+        if (it->second->StaticRouteObj::gateway() == gateway)
         {
             return it->second->getObjPath();
         }
-        it->second->StaticRouteObj::destination(destination);
+        it->second->StaticRouteObj::gateway(gateway);
     }
 
     writeConfigurationFile();

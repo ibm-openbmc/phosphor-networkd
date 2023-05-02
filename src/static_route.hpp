@@ -20,6 +20,8 @@ using StaticRouteIntf =
 using StaticRouteObj = sdbusplus::server::object_t<
     StaticRouteIntf, sdbusplus::xyz::openbmc_project::Object::server::Delete>;
 
+using IP = sdbusplus::xyz::openbmc_project::Network::server::IP;
+
 class EthernetInterface;
 
 /** @class StaticRoute
@@ -41,7 +43,7 @@ class StaticRoute : public StaticRouteObj
     StaticRoute(sdbusplus::bus_t& bus, std::string_view objRoot,
                 stdplus::PinnedRef<EthernetInterface> parent,
                 std::string destination, std::string gateway,
-                uint32_t prefixLength);
+                size_t prefixLength, IP::Protocol protocolType);
 
     /** @brief Delete this d-bus object.
      */
@@ -52,8 +54,9 @@ class StaticRoute : public StaticRouteObj
     using StaticRouteObj::gateway;
     std::string gateway(std::string) override;
     using StaticRouteObj::prefixLength;
-    uint32_t prefixLength(uint32_t) override;
-
+    size_t prefixLength(size_t) override;
+    using StaticRouteObj::protocolType;
+    IP::Protocol protocolType(IP::Protocol) override;
     inline const auto& getObjPath() const
     {
         return objPath;
@@ -69,7 +72,7 @@ class StaticRoute : public StaticRouteObj
     StaticRoute(sdbusplus::bus_t& bus, sdbusplus::message::object_path objPath,
                 stdplus::PinnedRef<EthernetInterface> parent,
                 std::string destination, std::string gateway,
-                uint32_t prefixLength);
+                size_t prefixLength, IP::Protocol protocolType);
 };
 
 } // namespace network

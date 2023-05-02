@@ -5,7 +5,7 @@
 #include "types.hpp"
 #include "xyz/openbmc_project/Network/IP/Create/server.hpp"
 #include "xyz/openbmc_project/Network/Neighbor/CreateStatic/server.hpp"
-#include "xyz/openbmc_project/Network/StaticRoute/CreateStaticRoute/server.hpp"
+#include "xyz/openbmc_project/Network/StaticRoute/Create/server.hpp"
 
 #include <optional>
 #include <sdbusplus/bus.hpp>
@@ -31,8 +31,7 @@ using Ifaces = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Network::server::MACAddress,
     sdbusplus::xyz::openbmc_project::Network::IP::server::Create,
     sdbusplus::xyz::openbmc_project::Network::Neighbor::server::CreateStatic,
-    sdbusplus::xyz::openbmc_project::Network::StaticRoute::server::
-        CreateStaticRoute,
+    sdbusplus::xyz::openbmc_project::Network::StaticRoute::server::Create,
     sdbusplus::xyz::openbmc_project::Collection::server::DeleteAll>;
 
 using VlanIfaces = sdbusplus::server::object_t<
@@ -140,7 +139,8 @@ class EthernetInterface : public Ifaces
      *  @parma[in] prefixLength - Number of network bits.
      */
     ObjectPath staticRoute(std::string destination, std::string gateway,
-                           uint32_t prefixLength) override;
+                           size_t prefixLength,
+                           IP::Protocol protocolType) override;
 
     /** Set value of DHCPEnabled */
     DHCPConf dhcpEnabled() const override;
