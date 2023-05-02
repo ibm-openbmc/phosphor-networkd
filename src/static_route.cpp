@@ -82,7 +82,6 @@ size_t StaticRoute::prefixLength(size_t /*prefixLength*/)
 {
     elog<NotAllowed>(REASON("Property update is not allowed"));
 }
-
 IP::Protocol StaticRoute::protocolType(IP::Protocol /*protocolType*/)
 {
     elog<NotAllowed>(REASON("Property update is not allowed"));
