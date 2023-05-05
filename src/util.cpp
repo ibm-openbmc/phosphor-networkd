@@ -211,12 +211,12 @@ DHCPVal getDHCPValue(const config::Parser& config)
         .value_or(DHCPVal{.v4 = true, .v6 = true});
 }
 
-bool getDHCPProp(const config::Parser& config, std::string_view key,
-                 std::string_view type)
+bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
+                 std::string_view key)
 {
-    type = (type == "dhcp4") ? "DHCPv4" : "DHCPv6";
+    std::string_view type = (dhcpType == DHCPType::v4) ? "DHCPv4" : "DHCPv6";
 
-    if (config.map.find(type) == config.map.end())
+    if (!config.map.contains(type))
     {
         type = "DHCP";
     }
