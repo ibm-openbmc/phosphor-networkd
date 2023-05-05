@@ -284,8 +284,7 @@ class EthernetInterface : public Ifaces
 
     /** @brief Map of DHCP conf objects.
      */
-    std::unordered_map<std::string, std::unique_ptr<dhcp::Configuration>>
-        dhcpConfigs;
+    string_umap<std::unique_ptr<dhcp::Configuration>> dhcpConfigs;
 };
 
 } // namespace network

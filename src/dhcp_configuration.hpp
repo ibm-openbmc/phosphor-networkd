@@ -2,6 +2,7 @@
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <stdplus/pinned.hpp>
+#include <stdplus/zstring.hpp>
 #include <xyz/openbmc_project/Network/DHCPConfiguration/server.hpp>
 
 namespace phosphor
@@ -32,7 +33,7 @@ class Configuration : public Iface
      *  @param[in] objPath - Path to attach at.
      *  @param[in] parent - Parent object.
      */
-    Configuration(sdbusplus::bus_t& bus, const char* objPath,
+    Configuration(sdbusplus::bus_t& bus, stdplus::const_zstring objPath,
                   stdplus::PinnedRef<EthernetInterface> parent);
 
     /** @brief If true then DNS servers received from the DHCP server
