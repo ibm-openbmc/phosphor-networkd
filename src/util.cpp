@@ -213,13 +213,7 @@ DHCPVal getDHCPValue(const config::Parser& config)
 
 bool getDHCPProp(const config::Parser& config, std::string_view key)
 {
-    return systemdParseLast(config, "DHCPV4", key, config::parseBool)
-        .value_or(true);
-}
-
-bool getDHCP6Prop(const config::Parser& config, std::string_view key)
-{
-    return systemdParseLast(config, "DHCPV6", key, config::parseBool)
+    return systemdParseLast(config, "DHCP", key, config::parseBool)
         .value_or(true);
 }
 
