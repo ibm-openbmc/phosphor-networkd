@@ -1124,7 +1124,7 @@ void EthernetInterface::writeConfigurationFile()
     {
         auto& dhcp4 = config.map["DHCPv4"].emplace_back();
         dhcp4["ClientIdentifier"].emplace_back("mac");
-        const auto& conf = *dhcpConfigs["dhcp4"];
+        const auto& conf = *dhcpConfigs[static_cast<int>(DHCPType::v4)];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp4["UseDNS"].emplace_back(dns_enabled);
         dhcp4["UseDomains"].emplace_back(dns_enabled);
@@ -1136,7 +1136,7 @@ void EthernetInterface::writeConfigurationFile()
     }
     {
         auto& dhcp6 = config.map["DHCPv6"].emplace_back();
-        const auto& conf = *dhcpConfigs["dhcp6"];
+        const auto& conf = *dhcpConfigs[static_cast<int>(DHCPType::v6)];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp6["UseDNS"].emplace_back(dns_enabled);
         dhcp6["UseDomains"].emplace_back(dns_enabled);
@@ -1358,12 +1358,15 @@ void EthernetInterface::VlanProperties::delete_()
 
 void EthernetInterface::addDHCPConfigurations()
 {
-    this->dhcpConfigs.emplace(
-        "dhcp4", std::make_unique<dhcp::Configuration>(bus, objPath + "/dhcp4",
-                                                       *this, "dhcp4"));
-    this->dhcpConfigs.emplace(
-        "dhcp6", std::make_unique<dhcp::Configuration>(bus, objPath + "/dhcp6",
-                                                       *this, "dhcp6"));
+    this->dhcpConfigs.emplace_back(std::make_unique<dhcp::Configuration>(
+        bus, objPath + "/dhcp4", *this, DHCPType::v4));
+    this->dhcpConfigs.emplace_back(std::make_unique<dhcp::Configuration>(
+        bus, objPath + "/dhcp6", *this, DHCPType::v6));
+}
+
+void EthernetInterface::reloadConfigs()
+{
+    manager.get().reloadConfigs();
 }
 
 } // namespace network
