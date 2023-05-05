@@ -942,7 +942,7 @@ void EthernetInterface::writeConfigurationFile()
         }
     }
     {
-        auto& dhcp4 = config.map["DHCPV4"].emplace_back();
+        auto& dhcp4 = config.map["DHCPv4"].emplace_back();
         dhcp4["ClientIdentifier"].emplace_back("mac");
         const auto& conf = *dhcpConfigs["dhcp4"];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
@@ -955,7 +955,7 @@ void EthernetInterface::writeConfigurationFile()
             conf.sendHostNameEnabled() ? "true" : "false");
     }
     {
-        auto& dhcp6 = config.map["DHCPV6"].emplace_back();
+        auto& dhcp6 = config.map["DHCPv6"].emplace_back();
         dhcp6["ClientIdentifier"].emplace_back("mac");
         const auto& conf = *dhcpConfigs["dhcp6"];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";

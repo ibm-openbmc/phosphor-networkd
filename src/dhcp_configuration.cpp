@@ -53,9 +53,6 @@ Configuration::Configuration(sdbusplus::bus_t& bus, const char* objPath,
     ConfigIntf::ntpEnabled(getDHCPProp(conf, "UseNTP"), true);
     ConfigIntf::hostNameEnabled(getDHCPProp(conf, "UseHostname"), true);
     ConfigIntf::sendHostNameEnabled(getDHCPProp(conf, "SendHostname"), true);
-    ConfigIntf::dnsv6Enabled(getDHCP6Prop(conf, "UseDNS"), true);
-    ConfigIntf::ntpv6Enabled(getDHCP6Prop(conf, "UseNTP"), true);
-    ConfigIntf::hostNamev6Enabled(getDHCP6Prop(conf, "UseHostname"), true);
     emit_object_added();
 }
 
@@ -111,48 +108,6 @@ bool Configuration::dnsEnabled(bool value)
     auto dns = ConfigIntf::dnsEnabled(value);
     parent.get().writeConfigurationFile();
     parent.get().manager.get().reloadConfigs();
-
-    return dns;
-}
-
-bool Configuration::hostNamev6Enabled(bool value)
-{
-    if (value == hostNamev6Enabled())
-    {
-        return value;
-    }
-
-    auto name = ConfigIntf::hostNamev6Enabled(value);
-    manager.get().writeToConfigurationFile();
-    manager.get().reloadConfigs();
-
-    return name;
-}
-
-bool Configuration::ntpv6Enabled(bool value)
-{
-    if (value == ntpv6Enabled())
-    {
-        return value;
-    }
-
-    auto ntp = ConfigIntf::ntpv6Enabled(value);
-    manager.get().writeToConfigurationFile();
-    manager.get().reloadConfigs();
-
-    return ntp;
-}
-
-bool Configuration::dnsv6Enabled(bool value)
-{
-    if (value == dnsv6Enabled())
-    {
-        return value;
-    }
-
-    auto dns = ConfigIntf::dnsv6Enabled(value);
-    manager.get().writeToConfigurationFile();
-    manager.get().reloadConfigs();
 
     return dns;
 }
