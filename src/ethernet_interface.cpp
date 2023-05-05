@@ -112,7 +112,6 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     }
     addDHCPConfigurations();
     emit_object_added();
-    addDHCPConfigurations();
 
     if (info.intf.vlan_id)
     {
