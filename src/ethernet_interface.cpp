@@ -945,6 +945,7 @@ void EthernetInterface::writeConfigurationFile()
         auto& dhcp4 = config.map["DHCPv4"].emplace_back();
         dhcp4["ClientIdentifier"].emplace_back("mac");
         const auto& conf = *dhcpConfigs["dhcp4"];
+<<<<<<< HEAD
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp4["UseDNS"].emplace_back(dns_enabled);
         dhcp4["UseDomains"].emplace_back(dns_enabled);
@@ -959,13 +960,25 @@ void EthernetInterface::writeConfigurationFile()
         dhcp6["ClientIdentifier"].emplace_back("mac");
         const auto& conf = *dhcpConfigs["dhcp6"];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
+=======
+        auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
+        dhcp4["UseDNS"].emplace_back(dns_enabled);
+        dhcp4["UseDomains"].emplace_back(dns_enabled);
+        dhcp4["UseNTP"].emplace_back(conf.ntpEnabled() ? "true" : "false");
+        dhcp4["UseHostname"].emplace_back(conf.hostNameEnabled() ? "true"
+                                                                 : "false");
+        dhcp4["SendHostname"].emplace_back(
+            conf.sendHostNameEnabled() ? "true" : "false");
+    }
+    {
+        auto& dhcp6 = config.map["DHCPv6"].emplace_back();
+        const auto& conf = *dhcpConfigs["dhcp6"];
+        auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp6["UseDNS"].emplace_back(dns_enabled);
         dhcp6["UseDomains"].emplace_back(dns_enabled);
         dhcp6["UseNTP"].emplace_back(conf.ntpEnabled() ? "true" : "false");
         dhcp6["UseHostname"].emplace_back(conf.hostNameEnabled() ? "true"
                                                                  : "false");
-        dhcp6["SendHostname"].emplace_back(
-            conf.sendHostNameEnabled() ? "true" : "false");
     }
     auto path =
         config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
