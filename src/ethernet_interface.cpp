@@ -956,7 +956,6 @@ void EthernetInterface::writeConfigurationFile()
     }
     {
         auto& dhcp6 = config.map["DHCPv6"].emplace_back();
-        dhcp6["ClientIdentifier"].emplace_back("mac");
         const auto& conf = *dhcpConfigs["dhcp6"];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp6["UseDNS"].emplace_back(dns_enabled);
@@ -964,8 +963,6 @@ void EthernetInterface::writeConfigurationFile()
         dhcp6["UseNTP"].emplace_back(conf.ntpEnabled() ? "true" : "false");
         dhcp6["UseHostname"].emplace_back(conf.hostNameEnabled() ? "true"
                                                                  : "false");
-        dhcp6["SendHostname"].emplace_back(
-            conf.sendHostNameEnabled() ? "true" : "false");
     }
     auto path =
         config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
