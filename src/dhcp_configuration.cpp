@@ -55,9 +55,12 @@ Configuration::Configuration(sdbusplus::bus_t& bus,
     ConfigIntf::ntpEnabled(getDHCPProp(conf, "UseNTP", type.c_str()), true);
     ConfigIntf::hostNameEnabled(getDHCPProp(conf, "UseHostname", type.c_str()),
                                 true);
-    ConfigIntf::sendHostNameEnabled(
-        getDHCPProp(conf, "SendHostname", type.c_str()), true);
-    emit_object_added();
+    if (std::string(type.c_str()) == "dhcp4")
+    {
+        ConfigIntf::sendHostNameEnabled(
+            getDHCPProp(conf, "SendHostname", type.c_str()), true);
+        emit_object_added();
+    }
 }
 
 bool Configuration::sendHostNameEnabled(bool value)

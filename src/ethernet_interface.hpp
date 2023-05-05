@@ -12,6 +12,7 @@
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <stdplus/pinned.hpp>
+#include <stdplus/str/maps.hpp>
 #include <stdplus/zstring_view.hpp>
 #include <string>
 #include <vector>

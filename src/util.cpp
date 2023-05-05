@@ -214,10 +214,13 @@ DHCPVal getDHCPValue(const config::Parser& config)
 bool getDHCPProp(const config::Parser& config, std::string_view key,
                  std::string_view type)
 {
-    if (nullptr == config.map.getLastValueString(type, key))
+    type = (type == "dhcp4") ? "DHCPv4" : "DHCPv6";
+
+    if (config.map.find(type) == config.map.end())
     {
         type = "DHCP";
     }
+
     return systemdParseLast(config, type, key, config::parseBool)
         .value_or(true);
 }
