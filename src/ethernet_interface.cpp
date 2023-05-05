@@ -110,6 +110,7 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
         EthernetInterface::defaultGateway6(std::to_string(*info.defgw6), true);
     }
     emit_object_added();
+    addDHCPConfigurations();
 
     if (info.intf.vlan_id)
     {
@@ -933,7 +934,7 @@ void EthernetInterface::writeConfigurationFile()
     {
         auto& dhcp4 = config.map["DHCPV4"].emplace_back();
         dhcp4["ClientIdentifier"].emplace_back("mac");
-        const auto& conf = manager.get().getDHCPConf();
+        const auto& conf = *dhcpConfigs["dhcp4"];
         auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp4["UseDNS"].emplace_back(dns_enabled);
         dhcp4["UseDomains"].emplace_back(dns_enabled);
@@ -946,32 +947,18 @@ void EthernetInterface::writeConfigurationFile()
     {
         auto& dhcp6 = config.map["DHCPV6"].emplace_back();
         dhcp6["ClientIdentifier"].emplace_back("mac");
-        const auto& conf = manager.get().getDHCPConf();
-        auto dns_enabled = conf.dnsv6Enabled() ? "true" : "false";
+        const auto& conf = *dhcpConfigs["dhcp6"];
+        auto dns_enabled = conf.dnsEnabled() ? "true" : "false";
         dhcp6["UseDNS"].emplace_back(dns_enabled);
         dhcp6["UseDomains"].emplace_back(dns_enabled);
-        dhcp6["UseNTP"].emplace_back(conf.ntpv6Enabled() ? "true" : "false");
-        dhcp6["UseHostname"].emplace_back(conf.hostNamev6Enabled() ? "true"
-                                                                   : "false");
+        dhcp6["UseNTP"].emplace_back(conf.ntpEnabled() ? "true" : "false");
+        dhcp6["UseHostname"].emplace_back(conf.hostNameEnabled() ? "true"
+                                                                 : "false");
         dhcp6["SendHostname"].emplace_back(
             conf.sendHostNameEnabled() ? "true" : "false");
     }
-
-    {
-        auto& sroutes = config.map["Route"];
-        for (const auto& temp : staticRoutes)
-        {
-            auto& staticRoute = sroutes.emplace_back();
-            staticRoute["Destination"].emplace_back(
-                fmt::format("{}/{}", temp.second->destination(),
-                            temp.second->prefixLength()));
-            staticRoute["Gateway"].emplace_back(temp.second->gateway());
-            staticRoute["GatewayOnLink"].emplace_back("true");
-        }
-    }
-
-    auto path =
-        config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
+    auto path = config::pathForIntfConf(manager.get().getConfDir(),
+                                        interfaceName());
     config.writeFile(path);
     auto msg = fmt::format("Wrote networkd file: {}", path.native());
     log<level::INFO>(msg.c_str(), entry("FILE=%s", path.c_str()));
@@ -1164,6 +1151,16 @@ void EthernetInterface::VlanProperties::delete_()
     }
 
     eth.get().manager.get().reloadConfigs();
+}
+
+void EthernetInterface::addDHCPConfigurations()
+{
+    this->dhcpConfigs.emplace("dhcp4",
+                              std::make_unique<dhcp::Configuration>(
+                                  bus, (objPath + "/dhcp4").c_str(), *this));
+    this->dhcpConfigs.emplace("dhcp6",
+                              std::make_unique<dhcp::Configuration>(
+                                  bus, (objPath + "/dhcp6").c_str(), *this));
 }
 
 } // namespace network
