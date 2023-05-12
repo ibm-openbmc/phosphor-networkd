@@ -2,7 +2,7 @@
 Name=*
 Name=!lo
 [DHCPv6]
-WithoutRA=@SOLICIT_ENABLE_DHCP6_WITHOUT_RA@
+WithoutRA=@ENABLE_DHCP6_WITHOUT_RA@
 [Network]
 DHCPPrefixDelegation=@DHCP_PREFIX_DELIGATION@
 DHCP=true
