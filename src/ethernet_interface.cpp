@@ -860,7 +860,7 @@ void EthernetInterface::writeConfigurationFile()
         network["IPv6AcceptRA"].emplace_back(ipv6AcceptRA() ? "true" : "false");
         if (dhcp6())
         {
-#ifdef ENABLE_DHCP6_WITHOUT_RA
+#ifdef SOLICIT_ENABLE_DHCP6_WITHOUT_RA
             config.map["DHCPv6"].emplace_back()["WithoutRA"].emplace_back(
                 "solicit");
 #endif
