@@ -23,9 +23,9 @@ static auto makeObjPath(std::string_view root, std::string addr)
 StaticRoute::StaticRoute(sdbusplus::bus_t& bus, std::string_view objRoot,
                          stdplus::PinnedRef<EthernetInterface> parent,
                          std::string destination, std::string gateway,
-                         uint32_t prefixLength) :
-    StaticRoute(bus, makeObjPath(objRoot, destination), parent, destination,
-                gateway, prefixLength)
+                         size_t prefixLength, IP::Protocol protocolType) :
+    StaticRoute(bus, makeObjPath(objRoot, gateway), parent, destination,
+                gateway, prefixLength, protocolType)
 {
 }
 
@@ -33,7 +33,7 @@ StaticRoute::StaticRoute(sdbusplus::bus_t& bus,
                          sdbusplus::message::object_path objPath,
                          stdplus::PinnedRef<EthernetInterface> parent,
                          std::string destination, std::string gateway,
-                         uint32_t prefixLength) :
+                         size_t prefixLength, IP::Protocol protocolType) :
     StaticRouteObj(bus, objPath.str.c_str(),
                    StaticRouteObj::action::defer_emit),
     parent(parent), objPath(std::move(objPath))
@@ -41,6 +41,7 @@ StaticRoute::StaticRoute(sdbusplus::bus_t& bus,
     StaticRouteObj::destination(destination, true);
     StaticRouteObj::gateway(gateway, true);
     StaticRouteObj::prefixLength(prefixLength, true);
+    StaticRouteObj::protocolType(protocolType, true);
     emit_object_added();
 }
 
@@ -77,10 +78,14 @@ std::string StaticRoute::gateway(std::string /*gateway*/)
     elog<NotAllowed>(REASON("Property update is not allowed"));
 }
 
-uint32_t StaticRoute::prefixLength(uint32_t /*prefixLength*/)
+size_t StaticRoute::prefixLength(size_t /*prefixLength*/)
 {
     elog<NotAllowed>(REASON("Property update is not allowed"));
 }
 
+IP::Protocol StaticRoute::protocolType(IP::Protocol /*protocolType*/)
+{
+    elog<NotAllowed>(REASON("Property update is not allowed"));
+}
 } // namespace network
 } // namespace phosphor
