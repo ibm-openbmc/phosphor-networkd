@@ -141,9 +141,10 @@ struct NeighborInfo
 struct StaticRouteInfo
 {
     unsigned ifidx;
-    uint32_t prefixLength;
+    size_t prefixLength;
     std::optional<std::string> destination;
     std::optional<std::string> gateway;
+    std::optional<std::string> protocol;
 
     constexpr bool operator==(const StaticRouteInfo& rhs) const noexcept
     {
