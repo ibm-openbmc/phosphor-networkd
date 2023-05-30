@@ -967,8 +967,8 @@ void EthernetInterface::writeConfigurationFile()
         dhcp6["SendHostname"].emplace_back(
             conf.sendHostNameEnabled() ? "true" : "false");
     }
-    auto path = config::pathForIntfConf(manager.get().getConfDir(),
-                                        interfaceName());
+    auto path =
+        config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
     config.writeFile(path);
     auto msg = fmt::format("Wrote networkd file: {}", path.native());
     log<level::INFO>(msg.c_str(), entry("FILE=%s", path.c_str()));
