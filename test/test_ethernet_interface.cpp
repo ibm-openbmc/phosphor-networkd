@@ -233,32 +233,6 @@ TEST_F(TestEthernetInterface, IPv6AcceptRA)
 
 TEST_F(TestEthernetInterface, AddStaticRoute)
 {
-    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
-    EXPECT_THAT(interface.staticRoutes,
-                UnorderedElementsAre(Key(std::string("10.10.10.10"))));
-}
-
-TEST_F(TestEthernetInterface, AddMultipleStaticRoutes)
-{
-    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
-    createStaticRouteObject("10.20.30.10", "10.20.30.1", 24);
-    EXPECT_THAT(interface.staticRoutes,
-                UnorderedElementsAre(Key(std::string("10.10.10.10")),
-                                     Key(std::string("10.20.30.10"))));
-}
-
-TEST_F(TestEthernetInterface, DeleteStaticRoute)
-{
-    createStaticRouteObject("10.10.10.10", "10.10.10.1", 24);
-    createStaticRouteObject("10.20.30.10", "10.20.30.1", 24);
-
-    interface.staticRoutes.at(std::string("10.10.10.10"))->delete_();
-    interface.staticRoutes.at(std::string("10.20.30.10"))->delete_();
-    EXPECT_EQ(interface.staticRoutes.empty(), true);
-}
-
-TEST_F(TestEthernetInterface, AddStaticRoute)
-{
     createStaticRouteObject("10.10.10.10", "10.10.10.1", 24,
                             IP::Protocol::IPv4);
     EXPECT_THAT(interface.staticRoutes,
