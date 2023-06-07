@@ -11,7 +11,7 @@ namespace network
 struct MockExecutor : DelayedExecutor
 {
     MOCK_METHOD((void), schedule, (), (override));
-    MOCK_METHOD((void), setCallback, (fu2::unique_function<void()> &&),
+    MOCK_METHOD((void), setCallback, (fu2::unique_function<void()>&&),
                 (override));
 };
 
