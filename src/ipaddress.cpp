@@ -96,15 +96,7 @@ void IPAddress::delete_()
             entry("PREFIX=%" PRIu8, prefixLength()),
             entry("INTERFACE=%s", parent.get().interfaceName().c_str());
 
-        if (origin() == IP::AddressOrigin::LinkLocal)
-        {
-            elog<NotAllowed>(
-                Reason("Not allowed to delete a LinkLocal address"));
-        }
-        else
-        {
-            elog<InternalFailure>();
-        }
+        elog<NotAllowed>(Reason("Not allowed to delete a non-static address"));
     }
 
     std::unique_ptr<IPAddress> ptr;
