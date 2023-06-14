@@ -118,6 +118,9 @@ class EthernetInterface : public Ifaces
     /** @brief Function used to delete IPv4 static addresses
      */
     void deleteStaticIPv4Addresses();
+    /** @brief Function used to load the static routes.
+     */
+    void loadStaticRoutes(const config::Parser& config);
 
     /** @brief Function to create ipAddress dbus object.
      *  @param[in] addressType - Type of ip address.
