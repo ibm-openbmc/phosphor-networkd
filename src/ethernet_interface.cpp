@@ -7,6 +7,7 @@
 #include "system_queries.hpp"
 #include "util.hpp"
 
+#include <arpa/inet.h>
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <linux/rtnetlink.h>
@@ -680,6 +681,58 @@ void EthernetInterface::loadNameServers(const config::Parser& config)
     EthernetInterfaceIntf::nameservers(getNameServerFromResolvd());
     EthernetInterfaceIntf::staticNameServers(
         config.map.getValueStrings("Network", "DNS"));
+}
+
+void EthernetInterface::loadStaticRoutes(const config::Parser& config)
+{
+    std::vector<std::string> destinations =
+        config.map.getValueStrings("Route", "Destination");
+    std::vector<std::string> gateways =
+        config.map.getValueStrings("Route", "Gateway");
+    for (uint8_t i = 0; i < destinations.size() && i < gateways.size(); i++)
+    {
+        size_t pos = destinations[i].find("/");
+        std::string dest = destinations[i].substr(0, pos);
+        std::string prefixStr =
+            destinations[i].substr(pos + 1, destinations[i].length());
+        uint8_t prefix = stoi(prefixStr);
+
+        IfAddr ifaddr;
+        InAddrAny addr;
+        IP::Protocol addressType;
+        unsigned char buf[sizeof(struct in6_addr)];
+        int status6 = inet_pton(AF_INET6, gateways[i].c_str(), buf);
+        if (status6 <= 0)
+        {
+            int status4 = inet_pton(AF_INET, gateways[i].c_str(), buf);
+            if (status4 <= 0)
+            {
+                auto msg1 = fmt::format("Invalid static route \n");
+                log<level::ERR>(msg1.c_str());
+                return;
+            }
+            addr = ToAddr<in_addr>{}(gateways[i]);
+            addressType = IP::Protocol::IPv4;
+        }
+        else if (status6)
+        {
+            addr = ToAddr<in6_addr>{}(gateways[i]);
+            addressType = IP::Protocol::IPv6;
+        }
+        try
+        {
+            ifaddr = {addr, prefix};
+        }
+        catch (const std::exception& e)
+        {
+            auto msg = fmt::format("Invalid static route {}\n", e.what());
+            log<level::ERR>(msg.c_str());
+        }
+        staticRoutes.emplace(gateways[i],
+                             std::make_unique<StaticRoute>(
+                                 bus, std::string_view(objPath), *this, dest,
+                                 gateways[i], prefix, addressType));
+    }
 }
 
 ServerList EthernetInterface::getNTPServerFromTimeSyncd()
