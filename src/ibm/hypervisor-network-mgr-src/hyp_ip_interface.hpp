@@ -72,6 +72,11 @@ class HypIPAddress : public HypIPIfaces
      */
     void delete_() override;
 
+    std::string getObjectPath()
+    {
+        return objectPath;
+    }
+
     /** @brief Get bios table property's prefix based
      *         on the protocol.
      *  @result prefix of bios table properties

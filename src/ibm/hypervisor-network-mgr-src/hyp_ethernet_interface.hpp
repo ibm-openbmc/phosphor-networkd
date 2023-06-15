@@ -138,6 +138,11 @@ class HypEthInterface : public CreateIface
      */
     bool isDHCPEnabled(HypIP::Protocol protocol);
 
+    /** @brief set the default v6 gateway of the interface.
+     * @param[in] gateway - default v6 gateway of the interface.
+     */
+    std::string defaultGateway6(std::string gateway) override;
+
     /** Set value of DHCPEnabled */
     HypEthernetIntf::DHCPConf dhcpEnabled() const override;
     HypEthernetIntf::DHCPConf dhcpEnabled(DHCPConf value) override;
@@ -152,6 +157,7 @@ class HypEthInterface : public CreateIface
     bool ipv6AcceptRA(bool value) override;
     using HypEthernetIntf::ipv6AcceptRA;
 
+    using HypEthernetIntf::defaultGateway6;
     using HypEthernetIntf::interfaceName;
 
   protected:
