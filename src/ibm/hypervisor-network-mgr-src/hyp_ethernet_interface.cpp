@@ -316,6 +316,32 @@ void HypEthInterface::watchBaseBiosTable()
                                     ipObj->HypIP::gateway(gateway);
                                     setIpPropsInMap(attr.first, gateway,
                                                     "String");
+                                    // Set default gateway if it is v6 on the
+                                    // respective eth interface
+                                    if (ipObj->type() == HypIP::Protocol::IPv6)
+                                    {
+                                        // This method is registered from eth0
+                                        // by default. Hence, "this" will point
+                                        // to eth0. Parse through the ethernet
+                                        // interfaces list and update the
+                                        // gateway of the respectie ethernet
+                                        // interface
+                                        for (auto& ethIntf :
+                                             manager.getEthIntfList())
+                                        {
+                                            std::string ipObjPath =
+                                                ipObj->getObjectPath();
+                                            if (ipObjPath.find(ethIntf.first) !=
+                                                std::string::npos)
+                                            {
+                                                ethIntf.second
+                                                    ->HypEthernetIntf::
+                                                        defaultGateway6(
+                                                            gateway);
+                                                break;
+                                            }
+                                        }
+                                    }
                                     break;
                                 }
                             }
@@ -631,6 +657,56 @@ bool HypEthInterface::ipv6AcceptRA(bool value)
         }
     }
     return value;
+}
+
+std::string HypEthInterface::defaultGateway6(std::string gateway)
+{
+    try
+    {
+        if (!gateway.empty())
+        {
+            gateway = std::to_string(ToAddr<in6_addr>{}(gateway));
+        }
+    }
+    catch (const std::exception& e)
+    {
+        auto msg = fmt::format("Invalid v6 GW `{}`: {}", gateway, e.what());
+        log<level::ERR>(msg.c_str(), entry("GATEWAY=%s", gateway.c_str()));
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("GATEWAY"),
+                              Argument::ARGUMENT_VALUE(gateway.c_str()));
+    }
+
+    if (HypEthernetIntf::defaultGateway6() == gateway)
+    {
+        return gateway;
+    }
+    // Set the corresponding ip address object's gateway
+    for (auto& addr : addrs)
+    {
+        auto& ipObj = addr.second;
+        if (ipObj->type() == HypIP::Protocol::IPv6)
+        {
+            if (ipObj->origin() == HypIP::AddressOrigin::Static)
+            {
+                HypEthernetIntf::defaultGateway6(gateway);
+                // Update ipv6 gateway as well
+                ipObj->gateway(gateway);
+            }
+            else
+            {
+                auto msg = fmt::format(
+                    "Cannot set IPv6 default gateway in DHCP mode to {}",
+                    gateway);
+                log<level::ERR>(msg.c_str(),
+                                entry("GATEWAY=%s", gateway.c_str()));
+                elog<InvalidArgument>(
+                    Argument::ARGUMENT_NAME("GATEWAY"),
+                    Argument::ARGUMENT_VALUE(gateway.c_str()));
+            }
+            break;
+        }
+    }
+    return gateway;
 }
 
 bool HypEthInterface::dhcp4(bool value)

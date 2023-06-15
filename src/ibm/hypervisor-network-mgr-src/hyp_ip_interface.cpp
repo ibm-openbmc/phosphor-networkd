@@ -36,6 +36,11 @@ HypIPAddress::HypIPAddress(sdbusplus::bus::bus& bus, const char* objPath,
     HypIP::type(type);
     HypIP::origin(origin);
 
+    if (HypIP::type() == HypIP::Protocol::IPv6)
+    {
+        parent.HypEthernetIntf::defaultGateway6(gateway);
+    }
+
     this->objectPath = objPath;
     this->intf = intf;
     emit_object_added();
@@ -190,6 +195,7 @@ void HypIPAddress::resetIPObjProps()
         defaultIp = "::";
         defaultPrefixLen = 128;
         defaultMethod = "IPv6Static";
+        parent.HypEthernetIntf::defaultGateway6(defaultIp);
     }
     HypIP::address(defaultIp);
     HypIP::gateway(defaultIp);
@@ -342,32 +348,44 @@ std::string HypIPAddress::gateway(std::string gateway)
         return gw;
     }
 
+    std::string protType;
     try
     {
         if (!gateway.empty())
         {
-            gateway = std::to_string(ToAddr<in_addr>{}(gateway));
+            if (HypIP::type() == HypIP::Protocol::IPv4)
+            {
+                gateway = std::to_string(ToAddr<in_addr>{}(gateway));
+                protType = "ipv4";
+            }
+            else if (HypIP::type() == HypIP::Protocol::IPv6)
+            {
+                gateway = std::to_string(ToAddr<in6_addr>{}(gateway));
+                protType = "ipv6";
+            }
         }
     }
     catch (const std::exception& e)
     {
-        auto msg = fmt::format("Invalid v4 GW `{}`: {}", gateway, e.what());
+        auto msg = fmt::format("Invalid GW `{}`: {}", gateway, e.what());
         log<level::ERR>(msg.c_str(), entry("GATEWAY=%s", gateway.c_str()));
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("GATEWAY"),
                               Argument::ARGUMENT_VALUE(gateway.c_str()));
     }
 
     gateway = HypIP::gateway(gateway);
+    // update the default gw of the ethernet interface
+    parent.defaultGateway6(gateway);
 
     // update parent biosTableAttrs
-    const std::string gatewayAttrName = "gateway";
+    const std::string gatewayAttrName = this->getHypPrefix() + "gateway";
     for (auto& it : parent.getBiosAttrsMap())
     {
-        if ((it.first.compare(it.first.size() - gatewayAttrName.size(),
-                              gatewayAttrName.size(), gatewayAttrName) == 0) &&
-            (std::get<std::string>(it.second) == gw))
+        if (it.first == gatewayAttrName)
         {
             parent.setIpPropsInMap(it.first, gateway, "String");
+            updateBaseBiosTable(it.first, gateway);
+            break;
         }
     }
 
