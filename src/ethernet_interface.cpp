@@ -920,7 +920,7 @@ void EthernetInterface::writeConfigurationFile()
         lla.emplace_back("no");
 #endif
         network["IPv6AcceptRA"].emplace_back(ipv6AcceptRA() ? "true" : "false");
-        if (dhcp6())
+        if (dhcp6() && ("solicit" == std::string(ENABLE_DHCP6_WITHOUT_RA)))
         {
             config.map["DHCPv6"].emplace_back()["WithoutRA"].emplace_back(
                 "solicit");
