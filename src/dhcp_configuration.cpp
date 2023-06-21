@@ -24,7 +24,8 @@ using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 
 Configuration::Configuration(sdbusplus::bus_t& bus,
                              stdplus::const_zstring objPath,
-                             stdplus::PinnedRef<EthernetInterface> parent) :
+                             stdplus::PinnedRef<EthernetInterface> parent,
+                             stdplus::const_zstring type) :
     Iface(bus, objPath.c_str(), Iface::action::defer_emit),
     parent(parent)
 {
@@ -50,10 +51,12 @@ Configuration::Configuration(sdbusplus::bus_t& bus,
         conf.setFile(newest_file.path());
     }
 
-    ConfigIntf::dnsEnabled(getDHCPProp(conf, "UseDNS"), true);
-    ConfigIntf::ntpEnabled(getDHCPProp(conf, "UseNTP"), true);
-    ConfigIntf::hostNameEnabled(getDHCPProp(conf, "UseHostname"), true);
-    ConfigIntf::sendHostNameEnabled(getDHCPProp(conf, "SendHostname"), true);
+    ConfigIntf::dnsEnabled(getDHCPProp(conf, "UseDNS", type.c_str()), true);
+    ConfigIntf::ntpEnabled(getDHCPProp(conf, "UseNTP", type.c_str()), true);
+    ConfigIntf::hostNameEnabled(getDHCPProp(conf, "UseHostname", type.c_str()),
+                                true);
+    ConfigIntf::sendHostNameEnabled(
+        getDHCPProp(conf, "SendHostname", type.c_str()), true);
     emit_object_added();
 }
 
@@ -67,7 +70,6 @@ bool Configuration::sendHostNameEnabled(bool value)
     auto name = ConfigIntf::sendHostNameEnabled(value);
     parent.get().writeConfigurationFile();
     parent.get().manager.get().reloadConfigs();
-
     return name;
 }
 

@@ -34,7 +34,8 @@ class Configuration : public Iface
      *  @param[in] parent - Parent object.
      */
     Configuration(sdbusplus::bus_t& bus, stdplus::const_zstring objPath,
-                  stdplus::PinnedRef<EthernetInterface> parent);
+                  stdplus::PinnedRef<EthernetInterface> parent,
+                  stdplus::const_zstring type);
 
     /** @brief If true then DNS servers received from the DHCP server
      *         will be used and take precedence over any statically

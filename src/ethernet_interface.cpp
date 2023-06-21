@@ -1225,10 +1225,13 @@ void EthernetInterface::VlanProperties::delete_()
 
 void EthernetInterface::addDHCPConfigurations()
 {
-    this->dhcpConfigs.emplace("dhcp4", std::make_unique<dhcp::Configuration>(
-                                           bus, objPath + "/dhcp4", *this));
-    this->dhcpConfigs.emplace("dhcp6", std::make_unique<dhcp::Configuration>(
-                                           bus, objPath + "/dhcp6", *this));
+    this->dhcpConfigs.emplace(
+        "dhcp4", std::make_unique<dhcp::Configuration>(bus, objPath + "/dhcp4",
+                                                       *this, "dhcp4"));
+    this->dhcpConfigs.emplace(
+        "dhcp6", std::make_unique<dhcp::Configuration>(bus, objPath + "/dhcp6",
+                                                       *this, "dhcp6"));
+}
 
 } // namespace network
 } // namespace phosphor
