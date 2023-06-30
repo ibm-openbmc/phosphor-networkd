@@ -1084,6 +1084,14 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv4Static";
+                    // Reset IPv4 to the defaults only when dhcpv4 is disabled;
+                    // if the old4 is false (which means static), then
+                    // reset shouldn't happen in order to restore the static
+                    // v4 configuration
+                    if (old4 == true)
+                    {
+                        (itr->second)->resetBaseBiosTableAttrs("IPv4");
+                    }
                 }
             }
             else if ((itr->second)->type() == HypIP::Protocol::IPv6)
@@ -1101,6 +1109,14 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv6Static";
+                    // Reset IPv6 to the defaults only when dhcpv6 is disabled;
+                    // if old6/oldra is false (which means static), then
+                    // reset shouldn't happen in order to restore the static
+                    // v6 configuration
+                    if (old6 == true || oldra == true)
+                    {
+                        (itr->second)->resetBaseBiosTableAttrs("IPv6");
+                    }
                 }
             }
             if (!method.empty())
