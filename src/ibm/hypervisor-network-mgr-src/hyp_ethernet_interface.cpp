@@ -848,6 +848,10 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
             default:
                 throw std::logic_error("Exhausted protocols");
         }
+        if (!validUnicast(addr))
+        {
+            throw std::invalid_argument("not unicast");
+        }
     }
     catch (const std::exception& e)
     {
