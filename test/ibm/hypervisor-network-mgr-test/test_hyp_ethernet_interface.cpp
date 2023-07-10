@@ -82,6 +82,14 @@ TEST_F(TestHypEthernetInterface, AddIPAddress)
     {
         EXPECT_EQ(true, isIPObjExist("eth0", "10.10.10.10"));
     }
+
+    addressType = HypIP::Protocol::IPv6;
+    EXPECT_EQ(false, interface.createIP(interface, "eth0", addressType,
+                                        "::", 128, ""));
+    EXPECT_EQ(false, interface.createIP(interface, "eth0", addressType, "::1",
+                                        128, ""));
+    EXPECT_EQ(false, interface.createIP(interface, "eth0", addressType,
+                                        "ff00::1", 8, ""));
 }
 
 TEST_F(TestHypEthernetInterface, AddMultipleAddress)
