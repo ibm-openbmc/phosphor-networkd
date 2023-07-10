@@ -67,10 +67,15 @@ class MockHypEthernetInterface : public HypEthInterface
                 default:
                     return false;
             }
+            if (!validUnicast(addr))
+            {
+                throw std::invalid_argument("not unicast");
+            }
         }
         catch (const std::exception& e)
         {
             // Invalid ip address
+            return false;
         }
 
         IfAddr ifaddr;
