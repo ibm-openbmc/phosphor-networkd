@@ -520,6 +520,8 @@ bool EthernetInterface::dhcp4(bool value)
     {
         writeConfigurationFile();
         manager.get().reloadConfigs();
+        auto msg = fmt::format("dhcp4(): reloaded systemd-networkd");
+        log<level::INFO>(msg.c_str());
     }
     return value;
 }
@@ -530,6 +532,8 @@ bool EthernetInterface::dhcp6(bool value)
     {
         writeConfigurationFile();
         manager.get().reloadConfigs();
+        auto msg = fmt::format("dhcp6(): reloaded systemd-networkd");
+        log<level::INFO>(msg.c_str());
     }
     return value;
 }
@@ -546,6 +550,9 @@ void EthernetInterface::deleteStaticIPv4Addresses()
             it = addrs.erase(it);
             writeConfigurationFile();
             manager.get().reloadConfigs();
+            auto msg = fmt::format(
+                "deleteStaticIPv4Addresses(): reloaded systemd-networkd");
+            log<level::INFO>(msg.c_str());
         }
         else
         {
@@ -561,6 +568,9 @@ EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
     // coexistence
     if ((value == DHCPConf::v4) || (value == DHCPConf::both))
     {
+        auto msg = fmt::format("dhcpEnabled(): Delete all IPv4 static "
+                               "addresses while enabling DHCPv4");
+        log<level::INFO>(msg.c_str());
         // Delete all IPv4 static addresses while enabling DHCP
         deleteStaticIPv4Addresses();
     }
@@ -571,6 +581,9 @@ EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
                                  value == DHCPConf::both);
     writeConfigurationFile();
     manager.get().reloadConfigs();
+    auto msg = fmt::format("dhcpEnabled(): reloaded systemd-networkd");
+    log<level::INFO>(msg.c_str());
+
     return value;
 }
 
