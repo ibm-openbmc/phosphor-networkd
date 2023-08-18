@@ -549,16 +549,16 @@ void EthernetInterface::deleteStaticIPv4Addresses()
             ptr = std::move(it->second);
             it = addrs.erase(it);
             writeConfigurationFile();
-            manager.get().reloadConfigs();
-            auto msg = fmt::format(
-                "deleteStaticIPv4Addresses(): reloaded systemd-networkd");
-            log<level::INFO>(msg.c_str());
         }
         else
         {
             it++;
         }
     }
+    manager.get().reloadConfigs();
+    auto msg =
+        fmt::format("deleteStaticIPv4Addresses(): reloaded systemd-networkd");
+    log<level::INFO>(msg.c_str());
 }
 
 EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
