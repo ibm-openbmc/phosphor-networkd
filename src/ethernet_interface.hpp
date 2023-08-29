@@ -22,6 +22,8 @@
 #include <xyz/openbmc_project/Network/VLAN/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
+#define TOSTRING(x) #x
+
 namespace phosphor
 {
 namespace network
