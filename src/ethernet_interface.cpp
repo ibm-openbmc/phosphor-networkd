@@ -302,7 +302,7 @@ bool EthernetInterface::dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol)
 
 void EthernetInterface::disableDHCP(IP::Protocol protocol)
 {
-    DHCPConf dhcpState = EthernetInterfaceIntf::dhcpEnabled();
+    DHCPConf dhcpState = dhcpEnabled();
     if (dhcpState == EthernetInterface::DHCPConf::both)
     {
         if (protocol == IP::Protocol::IPv4)
