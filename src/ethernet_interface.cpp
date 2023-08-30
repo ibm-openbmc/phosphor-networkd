@@ -573,6 +573,7 @@ EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
         log<level::INFO>(msg.c_str());
         // Delete all IPv4 static addresses while enabling DHCP
         deleteStaticIPv4Addresses();
+        EthernetInterfaceIntf::defaultGateway("");
     }
 
     EthernetInterfaceIntf::dhcp4(value == DHCPConf::v4 ||
