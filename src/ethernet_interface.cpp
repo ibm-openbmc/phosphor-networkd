@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
+#include <random>
 #include <stdplus/raw.hpp>
 #include <stdplus/zstring.hpp>
 #include <string>
@@ -1054,6 +1055,37 @@ void EthernetInterface::writeConfigurationFile()
             staticRoute["GatewayOnLink"].emplace_back("true");
         }
     }
+
+#ifdef LINK_LOCAL_AUTOCONFIGURATION
+    for (const auto& addr : addrs)
+    {
+        if ((addr.second->origin() == IP::AddressOrigin::LinkLocal) &&
+            (addr.second->type() == IP::Protocol::IPv4))
+        {
+            // Generating random id to create unique table id
+            // for route policy configuration
+            std::random_device rd;
+            std::default_random_engine gen(rd());
+            std::uniform_int_distribution<> dist{0, 1024};
+            std::string table = std::to_string(dist(gen));
+            auto& routingPolicy = config.map["Route"];
+            auto& routingPolicyRule = config.map["RoutingPolicyRule"];
+            auto& routePolicy = routingPolicy.emplace_back();
+            auto& routePolicyRule = routingPolicyRule.emplace_back();
+            routePolicy["PreferredSource"].emplace_back(
+                fmt::format("{}", addr.second->address()));
+            routePolicy["Destination"].emplace_back(fmt::format(
+                "{}/{}", addr.second->address(), addr.second->prefixLength()));
+
+            routePolicy["Table"].emplace_back(table);
+            routePolicyRule["To"].emplace_back(fmt::format(
+                "{}/{}", addr.second->address(), addr.second->prefixLength()));
+            routePolicyRule["From"].emplace_back(fmt::format(
+                "{}/{}", addr.second->address(), addr.second->prefixLength()));
+            routePolicyRule["Table"].emplace_back(table);
+        }
+    }
+#endif
 
     auto path =
         config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
