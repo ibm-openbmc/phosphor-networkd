@@ -1,11 +1,11 @@
 [Match]
-Name=eth0
+Name=eth1
 Name=!lo
 [DHCPv6]
 WithoutRA=@ENABLE_DHCP6_WITHOUT_RA@
 [Network]
 DHCP=true
-LinkLocalAddressing=@LINK_LOCAL_AUTOCONFIGURATION@
+LinkLocalAddressing=ipv6
 IPv6AcceptRA=@ENABLE_IPV6_ACCEPT_RA@
 [DHCP]
 ClientIdentifier=mac
