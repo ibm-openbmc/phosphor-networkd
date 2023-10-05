@@ -110,8 +110,8 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     {
         EthernetInterface::defaultGateway6(std::to_string(*info.defgw6), true);
     }
-    emit_object_added();
     addDHCPConfigurations();
+    emit_object_added();
 
     if (info.intf.vlan_id)
     {
