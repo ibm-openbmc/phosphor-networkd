@@ -22,13 +22,13 @@ const std::string HYP_NW_CONFIG_PERSIST_PATH = "/var/lib/network/hypervisor/";
  *  @param[in] list - list of hypervisor n/w config properties.
  *  @param[in] intf - hyp eth interface label (eth0/eth1).
  */
-void serialize(const NwConfigPropMap& list, std::string intf);
+void serialize(const NwConfigPropMap& list, std::string intf, std::string type);
 
 /** @brief Deserialze a persisted list of n/w config properties.
  *  @param[out] list - list of n/w config properties.
  *  @return intf - hyp eth interface label (eth0/eth1).
  */
-bool deserialize(NwConfigPropMap& list, std::string intf);
+bool deserialize(NwConfigPropMap& list, std::string intf, std::string type);
 
 } // namespace persistdata
 } // namespace network

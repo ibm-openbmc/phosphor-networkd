@@ -45,8 +45,18 @@ HypIPAddress::HypIPAddress(sdbusplus::bus::bus& bus, const char* objPath,
     this->intf = intf;
     emit_object_added();
 
+    std::string addressType;
+    if (HypIP::type() == HypIP::Protocol::IPv4)
+    {
+        addressType = "ipv4";
+    }
+    else if (HypIP::type() == HypIP::Protocol::IPv6)
+    {
+        addressType = "ipv6";
+    }
+
     // De-serialize the persisted data and set the dbus property
-    persistdata::deserialize(nwIPConfigList, intf);
+    persistdata::deserialize(nwIPConfigList, intf, addressType);
     setEnabledProp();
 }
 
@@ -87,8 +97,18 @@ bool HypIPAddress::enabled(bool value)
         // Insert the key value pair (Enabled, true)
         nwIPConfigList.insert(std::pair<std::string, bool>(propName, value));
     }
+
+    std::string type{};
+    if (HypIP::type() == HypIP::Protocol::IPv4)
+    {
+        type = "ipv4";
+    }
+    else if (HypIP::type() == HypIP::Protocol::IPv6)
+    {
+        type = "ipv6";
+    }
     // serialize the data
-    persistdata::serialize(nwIPConfigList, intf);
+    persistdata::serialize(nwIPConfigList, intf, type);
     return value;
 }
 

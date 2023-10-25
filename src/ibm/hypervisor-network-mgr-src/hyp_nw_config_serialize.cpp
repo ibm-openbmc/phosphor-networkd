@@ -12,9 +12,10 @@ namespace persistdata
 
 using namespace phosphor::logging;
 
-void serialize(const NwConfigPropMap& list, std::string intf)
+void serialize(const NwConfigPropMap& list, std::string intf, std::string type)
 {
-    std::string filePath = HYP_NW_CONFIG_PERSIST_PATH + intf + "_network";
+    std::string filePath =
+        HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type + "_network";
 
     // Create directory if it doesnot exist
     if (!std::filesystem::exists(HYP_NW_CONFIG_PERSIST_PATH.c_str()))
@@ -50,10 +51,10 @@ void serialize(const NwConfigPropMap& list, std::string intf)
     }
 }
 
-bool deserialize(NwConfigPropMap& list, std::string intf)
+bool deserialize(NwConfigPropMap& list, std::string intf, std::string type)
 {
-    std::string filePath = HYP_NW_CONFIG_PERSIST_PATH + intf + "_network";
-
+    std::string filePath =
+        HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type + "_network";
     try
     {
         if (std::filesystem::exists(filePath))
