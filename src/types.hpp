@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <format>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -741,7 +742,7 @@ template <typename T>
 struct Format
 {
   private:
-    fmt::formatter<std::string_view> formatter;
+    std::formatter<std::string_view> formatter;
 
   public:
     template <typename ParseContext>
