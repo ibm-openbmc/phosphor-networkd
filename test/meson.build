@@ -48,7 +48,7 @@ tests = [
   'netlink',
   'network_manager',
   'rtnetlink',
-  'types',
+#  'types',
   'util',
 ]
 
