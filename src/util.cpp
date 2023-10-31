@@ -9,12 +9,13 @@
 #include <fmt/format.h>
 #include <sys/wait.h>
 
-#include <cctype>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
+
+#include <cctype>
 #include <string>
 #include <string_view>
-#include <xyz/openbmc_project/Common/error.hpp>
 
 namespace phosphor
 {
@@ -169,8 +170,7 @@ inline auto systemdParseLast(const config::Parser& config,
                              auto&& fun)
 {
     if (!config.getFileExists())
-    {
-    }
+    {}
     else if (auto str = config.map.getLastValueString(section, key);
              str == nullptr)
     {

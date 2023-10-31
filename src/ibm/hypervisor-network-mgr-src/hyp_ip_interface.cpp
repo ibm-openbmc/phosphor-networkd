@@ -332,8 +332,8 @@ uint8_t HypIPAddress::prefixLength(uint8_t value)
     }
     catch (const std::exception& e)
     {
-        auto msg =
-            fmt::format("Invalid prefix length `{}`: {}\n", value, e.what());
+        auto msg = fmt::format("Invalid prefix length `{}`: {}\n", value,
+                               e.what());
         log<level::ERR>(msg.c_str(), entry("PREFIXLENGTH=%" PRIu8, value));
         elog<InvalidArgument>(
             Argument::ARGUMENT_NAME("prefixLength"),

@@ -15,8 +15,7 @@ class MockHypEthernetInterface : public HypEthInterface
                              const std::string& intfName,
                              HypNetworkMgr& parent) :
         HypEthInterface(bus, path, intfName, parent)
-    {
-    }
+    {}
 
     void createIPAddrObj()
     {

@@ -5,17 +5,18 @@
 #include "network_manager.hpp"
 #include "types.hpp"
 
-#include <filesystem>
-#include <fstream>
-#include <memory>
 #include <nlohmann/json.hpp>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/bus/match.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
+
+#include <filesystem>
+#include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
-#include <xyz/openbmc_project/Common/error.hpp>
 
 namespace phosphor::network::inventory
 {
@@ -86,8 +87,8 @@ ether_addr getfromInventory(sdbusplus::bus_t& bus, const std::string& intfName)
 
     auto depth = 0;
 
-    auto mapperCall =
-        bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
+    auto mapperCall = bus.new_method_call(mapperBus, mapperObj, mapperIntf,
+                                          "GetSubTree");
 
     mapperCall.append(invRoot, depth, interfaces);
 
@@ -120,7 +121,7 @@ ether_addr getfromInventory(sdbusplus::bus_t& bus, const std::string& intfName)
     {
         // If there are more than 2 objects, object path must contain the
         // interface name
-        for (auto const& object : objectTree)
+        for (const auto& object : objectTree)
         {
             log<level::INFO>("interface",
                              entry("INT=%s", interfaceName.c_str()));

@@ -5,8 +5,9 @@
 
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/elog.hpp>
-#include <string>
 #include <xyz/openbmc_project/Common/error.hpp>
+
+#include <string>
 
 namespace phosphor
 {
@@ -26,8 +27,7 @@ StaticRoute::StaticRoute(sdbusplus::bus_t& bus, std::string_view objRoot,
                          size_t prefixLength, IP::Protocol protocolType) :
     StaticRoute(bus, makeObjPath(objRoot, gateway), parent, destination,
                 gateway, prefixLength, protocolType)
-{
-}
+{}
 
 StaticRoute::StaticRoute(sdbusplus::bus_t& bus,
                          sdbusplus::message::object_path objPath,

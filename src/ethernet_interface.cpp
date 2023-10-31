@@ -13,16 +13,17 @@
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 
-#include <algorithm>
-#include <filesystem>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
 #include <stdplus/raw.hpp>
 #include <stdplus/zstring.hpp>
+#include <xyz/openbmc_project/Common/error.hpp>
+
+#include <algorithm>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <variant>
-#include <xyz/openbmc_project/Common/error.hpp>
 
 namespace phosphor
 {
@@ -78,8 +79,7 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                      bool enabled) :
     EthernetInterface(bus, manager, info, makeObjPath(objRoot, *info.intf.name),
                       config, enabled)
-{
-}
+{}
 
 EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                      stdplus::PinnedRef<Manager> manager,
@@ -416,8 +416,8 @@ ObjectPath EthernetInterface::neighbor(std::string ipAddress,
     }
     catch (const std::exception& e)
     {
-        auto msg =
-            fmt::format("Not a valid IP address `{}`: {}", ipAddress, e.what());
+        auto msg = fmt::format("Not a valid IP address `{}`: {}", ipAddress,
+                               e.what());
         log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", ipAddress.c_str()));
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("ipAddress"),
                               Argument::ARGUMENT_VALUE(ipAddress.c_str()));
@@ -474,8 +474,8 @@ ObjectPath EthernetInterface::staticRoute(std::string destination,
     }
     catch (const std::exception& e)
     {
-        auto msg =
-            fmt::format("Not a valid IP address `{}`: {}", gateway, e.what());
+        auto msg = fmt::format("Not a valid IP address `{}`: {}", gateway,
+                               e.what());
         log<level::ERR>(msg.c_str(), entry("ADDRESS=%s", gateway.c_str()));
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("gateway"),
                               Argument::ARGUMENT_VALUE(gateway.c_str()));
@@ -563,7 +563,6 @@ void EthernetInterface::deleteStaticIPv4Addresses()
 
 EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
 {
-
     // TODO This is a workaround to avoid IPv4 static and DHCP IP address
     // coexistence
     if ((value == DHCPConf::v4) || (value == DHCPConf::both))
@@ -646,8 +645,8 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
         }
         catch (const std::exception& e)
         {
-            auto msg =
-                fmt::format("Not a valid IP address `{}`: {}", ip, e.what());
+            auto msg = fmt::format("Not a valid IP address `{}`: {}", ip,
+                                   e.what());
             log<level::ERR>(msg.c_str()), entry("ADDRESS=%s", ip.c_str());
             elog<InvalidArgument>(Argument::ARGUMENT_NAME("StaticNameserver"),
                                   Argument::ARGUMENT_VALUE(ip.c_str()));
@@ -710,8 +709,8 @@ void EthernetInterface::loadStaticRoutes(const config::Parser& config)
 {
     std::vector<std::string> destinations =
         config.map.getValueStrings("Route", "Destination");
-    std::vector<std::string> gateways =
-        config.map.getValueStrings("Route", "Gateway");
+    std::vector<std::string> gateways = config.map.getValueStrings("Route",
+                                                                   "Gateway");
     for (uint8_t i = 0; i < destinations.size() && i < gateways.size(); i++)
     {
         size_t pos = destinations[i].find("/");
@@ -761,9 +760,9 @@ void EthernetInterface::loadStaticRoutes(const config::Parser& config)
 ServerList EthernetInterface::getNTPServerFromTimeSyncd()
 {
     ServerList servers; // Variable to capture the NTP Server IPs
-    auto method =
-        bus.get().new_method_call(TIMESYNCD_SERVICE, TIMESYNCD_SERVICE_PATH,
-                                  PROPERTY_INTERFACE, METHOD_GET);
+    auto method = bus.get().new_method_call(TIMESYNCD_SERVICE,
+                                            TIMESYNCD_SERVICE_PATH,
+                                            PROPERTY_INTERFACE, METHOD_GET);
 
     method.append(TIMESYNCD_INTERFACE, "LinkNTPServers");
 
@@ -1067,8 +1066,8 @@ void EthernetInterface::writeConfigurationFile()
         }
     }
 
-    auto path =
-        config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
+    auto path = config::pathForIntfConf(manager.get().getConfDir(),
+                                        interfaceName());
     config.writeFile(path);
     auto msg = fmt::format("Wrote networkd file: {}", path.native());
     log<level::INFO>(msg.c_str(), entry("FILE=%s", path.c_str()));

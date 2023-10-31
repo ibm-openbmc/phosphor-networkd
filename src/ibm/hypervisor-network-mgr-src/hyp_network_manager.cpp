@@ -116,8 +116,8 @@ void HypNetworkMgr::setBIOSTableAttrs()
         interfaces.emplace_back(biosMgrIntf);
         auto depth = 0;
 
-        auto mapperCall =
-            bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
+        auto mapperCall = bus.new_method_call(mapperBus, mapperObj, mapperIntf,
+                                              "GetSubTree");
 
         mapperCall.append(biosMgrObj, depth, interfaces);
 
@@ -148,7 +148,7 @@ void HypNetworkMgr::setBIOSTableAttrs()
         {
             // If there are more than 2 objects, object path must contain the
             // interface name
-            for (auto const& object : objectTree)
+            for (const auto& object : objectTree)
             {
                 log<level::INFO>("interface", entry("INT=%s", biosMgrIntf));
                 log<level::INFO>("object",
