@@ -1003,7 +1003,7 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
         bool v4Enabled = false;
         bool v6Enabled = false;
         bool slaacEnabled = false;
-        HypEthernetIntf::DHCPConf newValue;
+        HypEthernetIntf::DHCPConf newValue = HypEthernetIntf::DHCPConf::v4;
 
         if (value == HypEthernetIntf::DHCPConf::v4)
         {
