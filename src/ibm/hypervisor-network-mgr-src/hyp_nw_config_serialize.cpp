@@ -1,7 +1,8 @@
 #include "hyp_nw_config_serialize.hpp"
 
-#include <fstream>
 #include <phosphor-logging/log.hpp>
+
+#include <fstream>
 
 namespace phosphor
 {
@@ -14,8 +15,8 @@ using namespace phosphor::logging;
 
 void serialize(const NwConfigPropMap& list, std::string intf, std::string type)
 {
-    std::string filePath =
-        HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type + "_network";
+    std::string filePath = HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type +
+                           "_network";
 
     // Create directory if it doesnot exist
     if (!std::filesystem::exists(HYP_NW_CONFIG_PERSIST_PATH.c_str()))
@@ -53,8 +54,8 @@ void serialize(const NwConfigPropMap& list, std::string intf, std::string type)
 
 bool deserialize(NwConfigPropMap& list, std::string intf, std::string type)
 {
-    std::string filePath =
-        HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type + "_network";
+    std::string filePath = HYP_NW_CONFIG_PERSIST_PATH + intf + "_" + type +
+                           "_network";
     try
     {
         if (std::filesystem::exists(filePath))

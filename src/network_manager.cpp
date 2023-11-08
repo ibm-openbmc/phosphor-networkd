@@ -10,12 +10,13 @@
 #include <linux/neighbour.h>
 #include <net/if.h>
 
-#include <filesystem>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
 #include <sdbusplus/message.hpp>
 #include <stdplus/pinned.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
+
+#include <filesystem>
 
 constexpr char SYSTEMD_BUSNAME[] = "org.freedesktop.systemd1";
 constexpr char SYSTEMD_PATH[] = "/org/freedesktop/systemd1";
@@ -48,35 +49,35 @@ Manager::Manager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     systemdNetworkdEnabledMatch(
         bus, enabledMatch,
         [man = stdplus::PinnedRef(*this)](sdbusplus::message_t& m) {
-            std::string intf;
-            std::unordered_map<std::string, std::variant<std::string>> values;
-            try
-            {
-                m.read(intf, values);
-                auto it = values.find("AdministrativeState");
-                if (it == values.end())
-                {
-                    return;
-                }
-                const std::string_view obj = m.get_path();
-                auto sep = obj.rfind('/');
-                if (sep == obj.npos || sep + 3 > obj.size())
-                {
-                    throw std::invalid_argument("Invalid obj path");
-                }
-                auto ifidx = DecodeInt<unsigned, 10>{}(obj.substr(sep + 3));
-                const auto& state = std::get<std::string>(it->second);
-                man.get().handleAdminState(state, ifidx);
-            }
-            catch (const std::exception& e)
-            {
-                log<level::ERR>(
-                    fmt::format("AdministrativeState match parsing failed: {}",
-                                e.what())
-                        .c_str(),
-                    entry("ERROR=%s", e.what()));
-            }
-        })
+    std::string intf;
+    std::unordered_map<std::string, std::variant<std::string>> values;
+    try
+    {
+        m.read(intf, values);
+        auto it = values.find("AdministrativeState");
+        if (it == values.end())
+        {
+            return;
+        }
+        const std::string_view obj = m.get_path();
+        auto sep = obj.rfind('/');
+        if (sep == obj.npos || sep + 3 > obj.size())
+        {
+            throw std::invalid_argument("Invalid obj path");
+        }
+        auto ifidx = DecodeInt<unsigned, 10>{}(obj.substr(sep + 3));
+        const auto& state = std::get<std::string>(it->second);
+        man.get().handleAdminState(state, ifidx);
+    }
+    catch (const std::exception& e)
+    {
+        log<level::ERR>(
+            fmt::format("AdministrativeState match parsing failed: {}",
+                        e.what())
+                .c_str(),
+            entry("ERROR=%s", e.what()));
+    }
+})
 {
     reload.setCallback([&]() {
         for (auto& hook : reloadPreHooks)
@@ -364,39 +365,39 @@ void Manager::addDefGw(unsigned ifidx, InAddrAny addr)
     {
         std::visit(
             [&](auto addr) {
+            if constexpr (std::is_same_v<in_addr, decltype(addr)>)
+            {
+                it->second.defgw4.emplace(addr);
+            }
+            else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
+            {
+                it->second.defgw6.emplace(addr);
+            }
+            else
+            {
+                static_assert(!std::is_same_v<void, decltype(addr)>);
+            }
+        },
+            addr);
+        if (auto it = interfacesByIdx.find(ifidx); it != interfacesByIdx.end())
+        {
+            std::visit(
+                [&](auto addr) {
                 if constexpr (std::is_same_v<in_addr, decltype(addr)>)
                 {
-                    it->second.defgw4.emplace(addr);
+                    it->second->EthernetInterfaceIntf::defaultGateway(
+                        std::to_string(addr));
                 }
                 else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
                 {
-                    it->second.defgw6.emplace(addr);
+                    it->second->EthernetInterfaceIntf::defaultGateway6(
+                        std::to_string(addr));
                 }
                 else
                 {
                     static_assert(!std::is_same_v<void, decltype(addr)>);
                 }
             },
-            addr);
-        if (auto it = interfacesByIdx.find(ifidx); it != interfacesByIdx.end())
-        {
-            std::visit(
-                [&](auto addr) {
-                    if constexpr (std::is_same_v<in_addr, decltype(addr)>)
-                    {
-                        it->second->EthernetInterfaceIntf::defaultGateway(
-                            std::to_string(addr));
-                    }
-                    else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
-                    {
-                        it->second->EthernetInterfaceIntf::defaultGateway6(
-                            std::to_string(addr));
-                    }
-                    else
-                    {
-                        static_assert(!std::is_same_v<void, decltype(addr)>);
-                    }
-                },
                 addr);
         }
     }
@@ -413,18 +414,42 @@ void Manager::removeDefGw(unsigned ifidx, InAddrAny addr)
     {
         std::visit(
             [&](auto addr) {
+            if constexpr (std::is_same_v<in_addr, decltype(addr)>)
+            {
+                if (it->second.defgw4 == addr)
+                {
+                    it->second.defgw4.reset();
+                }
+            }
+            else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
+            {
+                if (it->second.defgw6 == addr)
+                {
+                    it->second.defgw6.reset();
+                }
+            }
+            else
+            {
+                static_assert(!std::is_same_v<void, decltype(addr)>);
+            }
+        },
+            addr);
+        if (auto it = interfacesByIdx.find(ifidx); it != interfacesByIdx.end())
+        {
+            std::visit(
+                [&](auto addr) {
                 if constexpr (std::is_same_v<in_addr, decltype(addr)>)
                 {
-                    if (it->second.defgw4 == addr)
+                    if (it->second->defaultGateway() == std::to_string(addr))
                     {
-                        it->second.defgw4.reset();
+                        it->second->EthernetInterfaceIntf::defaultGateway("");
                     }
                 }
                 else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
                 {
-                    if (it->second.defgw6 == addr)
+                    if (it->second->defaultGateway6() == std::to_string(addr))
                     {
-                        it->second.defgw6.reset();
+                        it->second->EthernetInterfaceIntf::defaultGateway6("");
                     }
                 }
                 else
@@ -432,34 +457,6 @@ void Manager::removeDefGw(unsigned ifidx, InAddrAny addr)
                     static_assert(!std::is_same_v<void, decltype(addr)>);
                 }
             },
-            addr);
-        if (auto it = interfacesByIdx.find(ifidx); it != interfacesByIdx.end())
-        {
-            std::visit(
-                [&](auto addr) {
-                    if constexpr (std::is_same_v<in_addr, decltype(addr)>)
-                    {
-                        if (it->second->defaultGateway() ==
-                            std::to_string(addr))
-                        {
-                            it->second->EthernetInterfaceIntf::defaultGateway(
-                                "");
-                        }
-                    }
-                    else if constexpr (std::is_same_v<in6_addr, decltype(addr)>)
-                    {
-                        if (it->second->defaultGateway6() ==
-                            std::to_string(addr))
-                        {
-                            it->second->EthernetInterfaceIntf::defaultGateway6(
-                                "");
-                        }
-                    }
-                    else
-                    {
-                        static_assert(!std::is_same_v<void, decltype(addr)>);
-                    }
-                },
                 addr);
         }
     }

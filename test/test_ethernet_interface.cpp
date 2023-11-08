@@ -7,8 +7,9 @@
 
 #include <sdbusplus/bus.hpp>
 #include <stdplus/gtest/tmp.hpp>
-#include <string_view>
 #include <xyz/openbmc_project/Common/error.hpp>
+
+#include <string_view>
 
 #include <gtest/gtest.h>
 
@@ -34,8 +35,7 @@ class TestEthernetInterface : public stdplus::gtest::TestWithTmp
         manager(bus, "/xyz/openbmc_test/network", confDir),
         interface(makeInterface(bus, manager))
 
-    {
-    }
+    {}
 
     static MockEthernetInterface
         makeInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
