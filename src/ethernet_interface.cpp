@@ -1056,14 +1056,19 @@ void EthernetInterface::writeConfigurationFile()
     // with eth0 route.
     // https://github.com/systemd/systemd/issues/23595
     // TODO: Remove this check once 23595 is resolved
-    if (interfaceName() != "eth1")
-    {
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
+    if (interfaceName() == "eth0")
+    {
         stream << "LinkLocalAddressing=yes\n";
-#else
-        stream << "LinkLocalAddressing=no\n";
-#endif
     }
+    else if (interfaceName() == "eth1")
+    {
+        stream << "LinkLocalAddressing=ipv6\n";
+    }
+#else
+    stream << "LinkLocalAddressing=no\n";
+#endif
+
     stream << std::boolalpha
            << "IPv6AcceptRA=" << EthernetInterfaceIntf::ipv6AcceptRA() << "\n";
 
