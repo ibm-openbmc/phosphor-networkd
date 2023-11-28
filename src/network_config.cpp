@@ -29,7 +29,11 @@ void writeDHCPDefault(const std::string& filename, const std::string& interface)
     {
         filestream << "[Match]\nName=" << interface <<
                 "\n[Network]\nDHCP=true\n"
+#ifdef LINK_LOCAL_AUTOCONFIGURATION
+                "LinkLocalAddressing=ipv6\n"
+#else
                 "LinkLocalAddressing=no\n"
+#endif
 #ifdef ENABLE_IPV6_ACCEPT_RA
                 "IPv6AcceptRA=true\n"
 #else
