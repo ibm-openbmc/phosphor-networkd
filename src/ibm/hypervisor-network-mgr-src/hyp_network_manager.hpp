@@ -129,6 +129,14 @@ class HypNetworkMgr
         return systemConf;
     }
 
+    /** @brief checks if if1 related bios attributes present
+     *
+     */
+    inline bool if1Exist()
+    {
+        return if1Present;
+    }
+
   protected:
     /**
      * @brief get Dbus Prop
@@ -158,6 +166,8 @@ class HypNetworkMgr
     /** @brief pointer to system conf object. */
     SystemConfPtr systemConf = nullptr;
 
+    /** @brief interface1 present or not  */
+    bool if1Present = 0;
     /** @brief Persistent map of EthernetInterface dbus
      *         objects and their names
      */
