@@ -27,12 +27,12 @@ constexpr auto BIOS_OBJPATH = "/xyz/openbmc_project/bios_config/manager";
 constexpr auto BIOS_MGR_INTF = "xyz.openbmc_project.BIOSConfig.Manager";
 
 // The total number of vmi attributes defined in biosTableAttrs
-// currently is 17:
-// 4 attributes of interface 0 - ipv4 address
-// 4 attributes of interface 0 - ipv6 address
-// 4 attributes of interface 1 - ipv4 address
-// 4 attributes of interface 1 - ipv6 address
-constexpr auto BIOS_ATTRS_SIZE = 17;
+// currently is 17 in case of systems with 2 eth interfaces and 9 with single
+// eth interface 4 attributes of interface 0 - ipv4 address 4 attributes of
+// interface 0 - ipv6 address 4 attributes of interface 1 - ipv4 address 4
+// attributes of interface 1 - ipv6 address
+constexpr auto BIOS_ATTRS_SIZE_WITH_IF1 = 17;
+constexpr auto BIOS_ATTRS_SIZE_WITHOUT_IF1 = 9;
 
 biosTableRetAttrValueType
     HypEthInterface::getAttrFromBiosTable(const std::string& attrName)
@@ -85,9 +85,9 @@ void HypEthInterface::watchBaseBiosTable()
         // the biosTableAttrs data member and ip address in bios table are
         // different)
 
-        // the no. of interface supported is two
-        constexpr auto MAX_INTF_SUPPORTED = 2;
-        for (auto i = 0; i < MAX_INTF_SUPPORTED; i++)
+        // the no. of interface supported
+        auto TOTAL_INTF_SUPPORTED = (manager.if1Exist()) ? 2 : 1;
+        for (auto i = 0; i < TOTAL_INTF_SUPPORTED; i++)
         {
             std::string intf = "if" + std::to_string(i);
 
@@ -474,8 +474,11 @@ void HypEthInterface::createIPAddressObjects()
     std::string ipGateway;
 
     auto biosTableAttrs = manager.getBIOSTableAttrs();
-
-    if (biosTableAttrs.size() < BIOS_ATTRS_SIZE)
+    bool AllAttrCollected =
+        manager.if1Exist()
+            ? biosTableAttrs.size() < BIOS_ATTRS_SIZE_WITH_IF1
+            : biosTableAttrs.size() < BIOS_ATTRS_SIZE_WITHOUT_IF1;
+    if (AllAttrCollected)
     {
         log<level::INFO>("Creating ip address object with default values");
         if (intfLabel == "if0")
