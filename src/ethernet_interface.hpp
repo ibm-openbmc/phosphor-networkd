@@ -10,6 +10,8 @@
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <sdeventplus/source/io.hpp>
+#include <stdplus/fd/managed.hpp>
 #include <stdplus/pinned.hpp>
 #include <stdplus/zstring_view.hpp>
 #include <xyz/openbmc_project/Collection/DeleteAll/server.hpp>
@@ -276,6 +278,18 @@ class EthernetInterface : public Ifaces
     friend class TestNetworkManager;
 
   private:
+    struct NCSITimeoutWatch
+    {
+        NCSITimeoutWatch(const std::string& ifname, int file);
+
+        void callback(sdeventplus::source::IO&, int, uint32_t);
+
+        const std::string ifname;
+        stdplus::ManagedFd fd;
+        sdeventplus::source::IO io;
+    };
+    std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
+
     EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                       stdplus::PinnedRef<Manager> manager,
                       const AllIntfInfo& info, std::string&& objPath,
