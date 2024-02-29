@@ -23,9 +23,11 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 
@@ -79,6 +81,60 @@ template <typename Addr>
 static bool validIntfIP(Addr a) noexcept
 {
     return a.isUnicast() && !a.isLoopback();
+}
+
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(const std::string& ifname,
+                                                      int file) :
+    ifname(ifname),
+    fd(std::forward<int>(file)),
+    io(sdeventplus::Event::get_default(), fd.get(), EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(fd.get(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        auto msg = fmt::format("Failed to read {} ncsi_timeout {}\n", ifname,
+                               r);
+        log<level::ERR>(msg.c_str());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        auto msg = fmt::format("{} NCSI timeout, setting link down/up\n",
+                               ifname);
+        log<level::WARNING>(msg.c_str());
+
+        r = write(fd.get(), data, sizeof(data));
+        if (r < 0)
+        {
+            auto msg = fmt::format("Failed to write {} ncsi_timeout {}\n",
+                                   ifname, r);
+            log<level::ERR>(msg.c_str());
+        }
+
+        system::setNICUp(ifname, false);
+
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(1ms);
+
+        system::setNICUp(ifname, true);
+    }
+
+    r = lseek(fd.get(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname,
+                               r);
+        log<level::ERR>(msg.c_str());
+    }
 }
 
 EthernetInterface::EthernetInterface(
@@ -143,6 +199,43 @@ EthernetInterface::EthernetInterface(
     for (const auto& [_, staticGateway] : info.staticGateways)
     {
         addStaticGateway(staticGateway);
+    }
+
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        std::filesystem::path ifindex = d.path() / "ifindex";
+        int fd = open(ifindex.c_str(), O_RDONLY);
+
+        if (fd >= 0)
+        {
+            std::string data(4, '\0');
+            auto r = read(fd, data.data(), data.size());
+
+            close(fd);
+            if (r < 0)
+            {
+                continue;
+            }
+
+            int i = std::stoi(data, nullptr, 0);
+            if (i == info.intf.idx)
+            {
+                std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
+
+                fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
+                if (fd >= 0)
+                {
+                    auto msg = fmt::format(
+                        "Starting to watch for NCSI timeout on {}\n",
+                        *info.intf.name);
+                    log<level::NOTICE>(msg.c_str());
+                    ncsiTimeoutWatch =
+                        std::make_unique<NCSITimeoutWatch>(*info.intf.name, fd);
+                }
+                break;
+            }
+        }
     }
 }
 
