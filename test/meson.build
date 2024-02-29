@@ -27,6 +27,7 @@ test_deps = [
   networkd_dep,
   gtest,
   gmock,
+  dependency('sdeventplus'),
 ]
 
 test_lib = static_library(
