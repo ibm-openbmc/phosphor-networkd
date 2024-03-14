@@ -79,7 +79,8 @@ EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(const std::string& ifname,
     io(sdeventplus::Event::get_default(), fd.get(), EPOLLPRI | EPOLLERR,
        std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
                  std::placeholders::_2, std::placeholders::_3))
-{}
+{
+}
 
 void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
                                                    int, uint32_t)
@@ -89,23 +90,23 @@ void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
 
     if (r < 2)
     {
-        auto msg = fmt::format("Failed to read {} ncsi_timeout {}\n", ifname,
-                               r);
+        auto msg =
+            fmt::format("Failed to read {} ncsi_timeout {}\n", ifname, r);
         log<level::ERR>(msg.c_str());
         return;
     }
 
     if (data[0] != '0')
     {
-        auto msg = fmt::format("{} NCSI timeout, setting link down/up\n",
-                               ifname);
+        auto msg =
+            fmt::format("{} NCSI timeout, setting link down/up\n", ifname);
         log<level::WARNING>(msg.c_str());
 
         r = write(fd.get(), data, sizeof(data));
         if (r < 0)
         {
-            auto msg = fmt::format("Failed to write {} ncsi_timeout {}\n",
-                                   ifname, r);
+            auto msg =
+                fmt::format("Failed to write {} ncsi_timeout {}\n", ifname, r);
             log<level::ERR>(msg.c_str());
         }
 
@@ -120,8 +121,8 @@ void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
     r = lseek(fd.get(), 0, SEEK_SET);
     if (r < 0)
     {
-        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname,
-                               r);
+        auto msg =
+            fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname, r);
         log<level::ERR>(msg.c_str());
     }
 }
