@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
 #include <stdplus/raw.hpp>
@@ -102,6 +103,7 @@ void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
             fmt::format("{} NCSI timeout, setting link down/up\n", ifname);
         log<level::WARNING>(msg.c_str());
 
+        // Clears the ncsi_timeout - link down should proceed despite error
         r = write(fd.get(), data, sizeof(data));
         if (r < 0)
         {
@@ -118,6 +120,7 @@ void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
         system::setNICUp(ifname, true);
     }
 
+    // Must seek to zero otherwise the poll returns immediately
     r = lseek(fd.get(), 0, SEEK_SET);
     if (r < 0)
     {
@@ -195,36 +198,30 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     for (auto&& d : std::filesystem::directory_iterator(dir))
     {
         std::filesystem::path ifindex = d.path() / "ifindex";
-        int fd = open(ifindex.c_str(), O_RDONLY);
+        std::ifstream file(ifindex);
+        unsigned int i;
 
-        if (fd >= 0)
+        file >> i;
+        if (!file)
         {
-            std::string data(4, '\0');
-            auto r = read(fd, data.data(), data.size());
+            continue;
+        }
 
-            close(fd);
-            if (r < 0)
+        if (i == info.intf.idx)
+        {
+            std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
+            int fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
             {
-                continue;
+                auto msg =
+                    fmt::format("Starting to watch for NCSI timeout on {}\n",
+                                *info.intf.name);
+                log<level::NOTICE>(msg.c_str());
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(*info.intf.name, fd);
             }
-
-            int i = std::stoi(data, nullptr, 0);
-            if (i == info.intf.idx)
-            {
-                std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
-
-                fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
-                if (fd >= 0)
-                {
-                    auto msg = fmt::format(
-                        "Starting to watch for NCSI timeout on {}\n",
-                        *info.intf.name);
-                    log<level::NOTICE>(msg.c_str());
-                    ncsiTimeoutWatch =
-                        std::make_unique<NCSITimeoutWatch>(*info.intf.name, fd);
-                }
-                break;
-            }
+            break;
         }
     }
 }
