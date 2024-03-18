@@ -231,6 +231,10 @@ class EthernetInterface : public Ifaces
      */
     std::string defaultGateway6(std::string gateway) override;
 
+    /** @brief Function to reload network configurations.
+     */
+    void reloadConfigs();
+
     bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
     void disableDHCP(IP::Protocol protocol);
     using EthernetInterfaceIntf::interfaceName;
@@ -304,9 +308,9 @@ class EthernetInterface : public Ifaces
      */
     void addDHCPConfigurations();
 
-    /** @brief Map of DHCP conf objects.
+    /** @brief Vector of DHCP conf objects.
      */
-    string_umap<std::unique_ptr<dhcp::Configuration>> dhcpConfigs;
+    std::vector<std::unique_ptr<dhcp::Configuration>> dhcpConfigs;
 };
 
 } // namespace network

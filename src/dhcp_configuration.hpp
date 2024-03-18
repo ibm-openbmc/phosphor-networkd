@@ -1,4 +1,6 @@
 #pragma once
+#include "util.hpp"
+
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
 #include <stdplus/pinned.hpp>
@@ -32,10 +34,10 @@ class Configuration : public Iface
      *  @param[in] bus - Bus to attach to.
      *  @param[in] objPath - Path to attach at.
      *  @param[in] parent - Parent object.
+     *  @param[in] type - Network type.
      */
     Configuration(sdbusplus::bus_t& bus, stdplus::const_zstring objPath,
-                  stdplus::PinnedRef<EthernetInterface> parent,
-                  stdplus::const_zstring type);
+                  stdplus::PinnedRef<EthernetInterface> parent, DHCPType type);
 
     /** @brief If true then DNS servers received from the DHCP server
      *         will be used and take precedence over any statically
@@ -44,6 +46,12 @@ class Configuration : public Iface
      *                     else false.
      */
     bool dnsEnabled(bool value) override;
+
+    /** @brief If true then domain names received from the DHCP server
+     *  @param[in] value - true if domain names needed from DHCP server
+     *                     else false.
+     */
+    bool domainEnabled(bool value) override;
 
     /** @brief If true then NTP servers received from the DHCP server
                will be used by systemd-timesyncd.
@@ -73,6 +81,7 @@ class Configuration : public Iface
      *
      */
     using ConfigIntf::dnsEnabled;
+    using ConfigIntf::domainEnabled;
     using ConfigIntf::hostNameEnabled;
     using ConfigIntf::ntpEnabled;
     using ConfigIntf::sendHostNameEnabled;
@@ -80,6 +89,7 @@ class Configuration : public Iface
   private:
     /** @brief Ethernet Interface object. */
     stdplus::PinnedRef<EthernetInterface> parent;
+    DHCPType type;
 };
 
 } // namespace dhcp
