@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <phosphor-logging/elog-errors.hpp>
@@ -27,6 +28,7 @@
 #include <stdplus/raw.hpp>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <xyz/openbmc_project/Common/error.hpp>
 
 namespace phosphor
@@ -77,6 +79,86 @@ std::map<EthernetInterface::DHCPConf, std::string> mapDHCPToSystemd = {
     {EthernetInterface::DHCPConf::v4, "ipv4"},
     {EthernetInterface::DHCPConf::v6, "ipv6"},
     {EthernetInterface::DHCPConf::none, "false"}};
+
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(const std::string& ifname,
+                                                      int file) :
+    ifname(ifname),
+    fd(std::forward<int>(file)),
+    io(sdeventplus::Event::get_default(), fd.get(), EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{
+}
+
+static void setNICUp(std::string_view ifname, bool up)
+{
+    EthernetIntfSocket eifSocket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
+
+    if (eifSocket.sock < 0)
+    {
+        return;
+    }
+
+    ifreq ifr = {};
+    const auto size = std::min<std::size_t>(ifname.size(), IF_NAMESIZE - 1);
+    std::copy_n(ifname.begin(), size, ifr.ifr_name);
+    if (ioctl(eifSocket.sock, SIOCGIFFLAGS, &ifr) != 0)
+    {
+        return;
+    }
+
+    ifr.ifr_flags &= ~IFF_UP;
+    ifr.ifr_flags |= up ? IFF_UP : 0;
+
+    ioctl(eifSocket.sock, SIOCSIFFLAGS, &ifr);
+}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(fd.get(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        auto msg =
+            fmt::format("Failed to read {} ncsi_timeout {}\n", ifname, r);
+        log<level::ERR>(msg.c_str());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        auto msg =
+            fmt::format("{} NCSI timeout, setting link down/up\n", ifname);
+        log<level::WARNING>(msg.c_str());
+
+        // Clears the ncsi_timeout - link down should proceed despite error
+        r = write(fd.get(), data, sizeof(data));
+        if (r < 0)
+        {
+            auto msg =
+                fmt::format("Failed to write {} ncsi_timeout {}\n", ifname, r);
+            log<level::ERR>(msg.c_str());
+        }
+
+        setNICUp(ifname, false);
+
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(1ms);
+
+        setNICUp(ifname, true);
+    }
+
+    // Must seek to zero otherwise the poll returns immediately
+    r = lseek(fd.get(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        auto msg =
+            fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname, r);
+        log<level::ERR>(msg.c_str());
+    }
+}
 
 EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
                                      const std::string& objPath,
@@ -138,6 +220,34 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
     if (emitSignal)
     {
         this->emit_object_added();
+    }
+
+    const auto ifIdx = ifIndex();
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        std::filesystem::path ifindex = d.path() / "ifindex";
+        std::ifstream file(ifindex);
+        unsigned int i;
+
+        file >> i;
+        if (!file)
+        {
+            continue;
+        }
+
+        if (i == ifIdx)
+        {
+            std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
+            int fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
+            {
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(intfName, fd);
+            }
+            break;
+        }
     }
 }
 
