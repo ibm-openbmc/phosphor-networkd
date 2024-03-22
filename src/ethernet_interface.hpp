@@ -8,6 +8,8 @@
 #include <filesystem>
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <sdeventplus/source/io.hpp>
+#include <stdplus/fd/managed.hpp>
 #include <string>
 #include <xyz/openbmc_project/Collection/DeleteAll/server.hpp>
 #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
@@ -360,6 +362,17 @@ class EthernetInterface : public Ifaces
     friend class TestEthernetInterface;
 
   private:
+    struct NCSITimeoutWatch
+    {
+        NCSITimeoutWatch(const std::string& ifname, int file);
+
+        void callback(sdeventplus::source::IO&, int, uint32_t);
+
+        const std::string ifname;
+        stdplus::ManagedFd fd;
+        sdeventplus::source::IO io;
+    };
+    std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
     /** @brief Determines if DHCP is active for the IP::Protocol supplied.
      *  @param[in] protocol - Either IPv4 or IPv6
      *  @param[in] ignoreProtocol - Allows IPv4 and IPv6 to be checked using a
