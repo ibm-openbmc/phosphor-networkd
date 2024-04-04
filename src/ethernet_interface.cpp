@@ -1303,6 +1303,12 @@ std::string EthernetInterface::macAddress(std::string value)
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("MACAddress"),
                               Argument::ARGUMENT_VALUE(value.c_str()));
     }
+    catch (const std::exception&)
+    {
+        log<level::ERR>("Internal failure in patching MACAddress.",
+                        entry("MAC=%s", value.c_str()));
+        elog<InternalFailure>();
+    }
     if (!mac_address::isUnicast(newMAC))
     {
         log<level::ERR>("MACAddress is not valid.",
