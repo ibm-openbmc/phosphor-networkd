@@ -26,7 +26,7 @@ using biosAttrMenuPath = std::string;
 using biosAttrCurrValue = std::variant<int64_t, std::string>;
 using biosAttrDefaultValue = std::variant<int64_t, std::string>;
 using biosAttrOptions =
-    std::tuple<std::string, std::variant<int64_t, std::string>>;
+    std::tuple<std::string, std::variant<int64_t, std::string>, std::string>;
 
 using biosTableType = std::map<biosAttrName, biosAttrCurrValue>;
 using BiosBaseTableItemType =
