@@ -1377,5 +1377,40 @@ void EthernetInterface::reloadConfigs()
     manager.get().reloadConfigs();
 }
 
+void EthernetInterface::watchNTPServers()
+{
+    ntpServerMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/timesync1',"
+        "arg0='org.freedesktop.timesync1.Manager'",
+        [this](sdbusplus::message::message& msg) {
+        if (msg.is_method_error())
+        {
+            return;
+        }
+
+        std::string interfaceName;
+        std::map<std::string, std::variant<std::vector<std::string>>>
+            changedProperties;
+        std::vector<std::string> invalidatedProperties;
+
+        msg.read(interfaceName, changedProperties, invalidatedProperties);
+
+        if (interfaceName == "org.freedesktop.timesync1.Manager")
+        {
+            auto it = changedProperties.find("LinkNTPServers");
+            if (it != changedProperties.end())
+            {
+                auto msg = fmt::format("NTP server ip updated in timesyncd");
+                log<level::INFO>(msg.c_str());
+                config::Parser config(config::pathForIntfConf(
+                    manager.get().getConfDir(), interfaceName));
+                loadNTPServers(config);
+            }
+        }
+    });
+}
+
 } // namespace network
 } // namespace phosphor
