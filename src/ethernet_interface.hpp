@@ -130,6 +130,10 @@ class EthernetInterface : public Ifaces
      */
     void watchNTPServers();
 
+    /** @brief Function to watch status of systemd timesyncd.
+     */
+    void watchTimeSyncActiveState();
+
     /** @brief Function to create ipAddress dbus object.
      *  @param[in] addressType - Type of ip address.
      *  @param[in] ipAddress- IP address.
@@ -307,6 +311,7 @@ class EthernetInterface : public Ifaces
     bool originIsManuallyAssigned(IP::AddressOrigin origin);
 
     std::unique_ptr<sdbusplus::bus::match::match> ntpServerMatch;
+    std::unique_ptr<sdbusplus::bus::match::match> activeStateMatch;
 
     int handleNCSITimeout();
 

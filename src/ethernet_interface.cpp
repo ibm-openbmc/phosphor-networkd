@@ -1337,5 +1337,42 @@ void EthernetInterface::watchNTPServers()
         });
 }
 
+void EthernetInterface::watchTimeSyncActiveState()
+{
+    activeStateMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/systemd1/unit/systemd_2dtimesyncd_2eservice',"
+        "arg0='org.freedesktop.systemd1.Unit'",
+        [this](sdbusplus::message::message& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::string>> changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.systemd1.Unit")
+            {
+                auto it = changedProperties.find("ActiveState");
+                if (it != changedProperties.end())
+                {
+                    std::string activeState = std::get<std::string>(it->second);
+                    if (activeState == "active" || activeState == "inactive")
+                    {
+                        lg2::info("systemd-timesyncd switched to : {SYD_STATE}",
+                                  "SYD_STATE", activeState);
+                        config::Parser config(config::pathForIntfConf(
+                            manager.get().getConfDir(), interfaceName()));
+                        loadNTPServers(config);
+                    }
+                }
+            }
+        });
+}
+
 } // namespace network
 } // namespace phosphor
