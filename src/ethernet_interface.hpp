@@ -305,6 +305,7 @@ class EthernetInterface : public Ifaces
      *  @returns true/false value if the address is static
      */
     bool originIsManuallyAssigned(IP::AddressOrigin origin);
+
     std::unique_ptr<sdbusplus::bus::match::match> ntpServerMatch;
 };
 
