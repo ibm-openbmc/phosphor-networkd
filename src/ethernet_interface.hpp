@@ -143,7 +143,7 @@ class EthernetInterface : public Ifaces
      *  @param[in] gateway - Gateway
      *  @parma[in] prefixLength - Number of network bits.
      */
-    ObjectPath staticGateway(std::string gateway, size_t prefixLength,
+    ObjectPath staticGateway(std::string gateway,
                              IP::Protocol protocolType) override;
 
     /** Set value of DHCPEnabled */

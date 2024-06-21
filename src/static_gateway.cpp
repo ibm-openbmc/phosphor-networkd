@@ -23,23 +23,20 @@ static auto makeObjPath(std::string_view root, std::string addr)
 
 StaticGateway::StaticGateway(sdbusplus::bus_t& bus, std::string_view objRoot,
                              stdplus::PinnedRef<EthernetInterface> parent,
-                             std::string gateway, size_t prefixLength,
-                             IP::Protocol protocolType) :
+                             std::string gateway, IP::Protocol protocolType) :
     StaticGateway(bus, makeObjPath(objRoot, gateway), parent, gateway,
-                  prefixLength, protocolType)
+                  protocolType)
 {}
 
 StaticGateway::StaticGateway(sdbusplus::bus_t& bus,
                              sdbusplus::message::object_path objPath,
                              stdplus::PinnedRef<EthernetInterface> parent,
-                             std::string gateway, size_t prefixLength,
-                             IP::Protocol protocolType) :
+                             std::string gateway, IP::Protocol protocolType) :
     StaticGatewayObj(bus, objPath.str.c_str(),
                      StaticGatewayObj::action::defer_emit),
     parent(parent), objPath(std::move(objPath))
 {
     StaticGatewayObj::gateway(gateway, true);
-    StaticGatewayObj::prefixLength(prefixLength, true);
     StaticGatewayObj::protocolType(protocolType, true);
     emit_object_added();
 }
@@ -72,10 +69,6 @@ std::string StaticGateway::gateway(std::string /*gateway*/)
     elog<NotAllowed>(REASON("Property update is not allowed"));
 }
 
-size_t StaticGateway::prefixLength(size_t /*prefixLength*/)
-{
-    elog<NotAllowed>(REASON("Property update is not allowed"));
-}
 IP::Protocol StaticGateway::protocolType(IP::Protocol /*protocolType*/)
 {
     elog<NotAllowed>(REASON("Property update is not allowed"));

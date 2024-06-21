@@ -56,9 +56,9 @@ class TestEthernetInterface : public stdplus::gtest::TestWithTmp
     }
 
     auto createStaticGatewayObject(const std::string& gateway,
-                                   size_t prefixLength, IP::Protocol protocol)
+                                   IP::Protocol protocol)
     {
-        return interface.staticGateway(gateway, prefixLength, protocol);
+        return interface.staticGateway(gateway, protocol);
     }
 
     void setNtpServers()
@@ -259,43 +259,17 @@ TEST_F(TestEthernetInterface, DHCPEnabled)
     set_test(DHCPConf::both, /*dhcp4=*/true, /*dhcp6=*/true, /*ra=*/true);
 }
 
-TEST_F(TestEthernetInterface, AddStaticGateway)
-{
-    createStaticGatewayObject("10.10.10.1", 24, IP::Protocol::IPv4);
-    EXPECT_THAT(interface.staticGateways,
-                UnorderedElementsAre(Key(std::string("10.10.10.1"))));
-}
-
-TEST_F(TestEthernetInterface, AddMultipleStaticGateways)
-{
-    createStaticGatewayObject("10.10.10.1", 24, IP::Protocol::IPv4);
-    createStaticGatewayObject("10.20.30.1", 24, IP::Protocol::IPv4);
-    EXPECT_THAT(interface.staticGateways,
-                UnorderedElementsAre(Key(std::string("10.10.10.1")),
-                                     Key(std::string("10.20.30.1"))));
-}
-
-TEST_F(TestEthernetInterface, DeleteStaticGateway)
-{
-    createStaticGatewayObject("10.10.10.1", 24, IP::Protocol::IPv4);
-    createStaticGatewayObject("10.20.30.1", 24, IP::Protocol::IPv4);
-
-    interface.staticGateways.at(std::string("10.10.10.1"))->delete_();
-    interface.staticGateways.at(std::string("10.20.30.1"))->delete_();
-    EXPECT_EQ(interface.staticGateways.empty(), true);
-}
-
 TEST_F(TestEthernetInterface, AddIPv6StaticGateway)
 {
-    createStaticGatewayObject("2002:903:15f:325::1", 64, IP::Protocol::IPv6);
+    createStaticGatewayObject("2002:903:15f:325::1", IP::Protocol::IPv6);
     EXPECT_THAT(interface.staticGateways,
                 UnorderedElementsAre(Key(std::string("2002:903:15f:325::1"))));
 }
 
 TEST_F(TestEthernetInterface, AddMultipleIPv6StaticGateways)
 {
-    createStaticGatewayObject("2003:903:15f:325::1", 64, IP::Protocol::IPv6);
-    createStaticGatewayObject("2004:903:15f:325::1", 64, IP::Protocol::IPv6);
+    createStaticGatewayObject("2003:903:15f:325::1", IP::Protocol::IPv6);
+    createStaticGatewayObject("2004:903:15f:325::1", IP::Protocol::IPv6);
     EXPECT_THAT(interface.staticGateways,
                 UnorderedElementsAre(Key(std::string("2003:903:15f:325::1")),
                                      Key(std::string("2004:903:15f:325::1"))));
