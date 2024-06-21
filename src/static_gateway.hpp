@@ -39,12 +39,10 @@ class StaticGateway : public StaticGatewayObj
      *  @param[in] objRoot - Path to attach at.
      *  @param[in] parent - Parent object.
      *  @param[in] gateway - Gateway address.
-     *  @param[in] prefixLength - Prefix length.
      */
     StaticGateway(sdbusplus::bus_t& bus, std::string_view objRoot,
                   stdplus::PinnedRef<EthernetInterface> parent,
-                  std::string gateway, size_t prefixLength,
-                  IP::Protocol protocolType);
+                  std::string gateway, IP::Protocol protocolType);
 
     /** @brief Delete this d-bus object.
      */
@@ -52,8 +50,6 @@ class StaticGateway : public StaticGatewayObj
 
     using StaticGatewayObj::gateway;
     std::string gateway(std::string) override;
-    using StaticGatewayObj::prefixLength;
-    size_t prefixLength(size_t) override;
     using StaticGatewayObj::protocolType;
     IP::Protocol protocolType(IP::Protocol) override;
     inline const auto& getObjPath() const
@@ -71,8 +67,7 @@ class StaticGateway : public StaticGatewayObj
     StaticGateway(sdbusplus::bus_t& bus,
                   sdbusplus::message::object_path objPath,
                   stdplus::PinnedRef<EthernetInterface> parent,
-                  std::string gateway, size_t prefixLength,
-                  IP::Protocol protocolType);
+                  std::string gateway, IP::Protocol protocolType);
 };
 
 } // namespace network
