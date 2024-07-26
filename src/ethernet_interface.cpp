@@ -22,9 +22,12 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 
@@ -78,6 +81,62 @@ template <typename Addr>
 static bool validIntfIP(Addr a) noexcept
 {
     return a.isUnicast() && !a.isLoopback();
+}
+
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(const std::string& ifname,
+                                                      int file) :
+    ifname(ifname),
+    fd(std::forward<int>(file)),
+    io(sdeventplus::Event::get_default(), fd.get(), EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(fd.get(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        auto msg = fmt::format("Failed to read {} ncsi_timeout {}\n", ifname,
+                               r);
+        log<level::ERR>(msg.c_str());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        auto msg = fmt::format("{} NCSI timeout, setting link down/up\n",
+                               ifname);
+        log<level::WARNING>(msg.c_str());
+
+        // Clears the ncsi_timeout - link down should proceed despite error
+        r = write(fd.get(), data, sizeof(data));
+        if (r < 0)
+        {
+            auto msg = fmt::format("Failed to write {} ncsi_timeout {}\n",
+                                   ifname, r);
+            log<level::ERR>(msg.c_str());
+        }
+
+        system::setNICUp(ifname, false);
+
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(1ms);
+
+        system::setNICUp(ifname, true);
+    }
+
+    // Must seek to zero otherwise the poll returns immediately
+    r = lseek(fd.get(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname,
+                               r);
+        log<level::ERR>(msg.c_str());
+    }
 }
 
 EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
@@ -141,6 +200,37 @@ EthernetInterface::EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     for (const auto& [_, staticGateway] : info.staticGateways)
     {
         addStaticGateway(staticGateway);
+    }
+
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        std::filesystem::path ifindex = d.path() / "ifindex";
+        std::ifstream file(ifindex);
+        unsigned int i;
+
+        file >> i;
+        if (!file)
+        {
+            continue;
+        }
+
+        if (i == info.intf.idx)
+        {
+            std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
+            int fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
+            {
+                auto msg =
+                    fmt::format("Starting to watch for NCSI timeout on {}\n",
+                                *info.intf.name);
+                log<level::NOTICE>(msg.c_str());
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(*info.intf.name, fd);
+            }
+            break;
+        }
     }
 }
 
