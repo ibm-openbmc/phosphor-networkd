@@ -1228,21 +1228,21 @@ void EthernetInterface::watchNTPServers()
             return;
         }
 
-        std::string interfaceName;
+        std::string interface;
         std::map<std::string, std::variant<std::vector<std::string>>>
             changedProperties;
         std::vector<std::string> invalidatedProperties;
 
-        msg.read(interfaceName, changedProperties, invalidatedProperties);
+        msg.read(interface, changedProperties, invalidatedProperties);
 
-        if (interfaceName == "org.freedesktop.timesync1.Manager")
+        if (interface == "org.freedesktop.timesync1.Manager")
         {
             auto it = changedProperties.find("LinkNTPServers");
             if (it != changedProperties.end())
             {
                 lg2::info("NTP server ip updated in timesyncd");
                 config::Parser config(config::pathForIntfConf(
-                    manager.get().getConfDir(), interfaceName));
+                    manager.get().getConfDir(), interfaceName()));
                 loadNTPServers(config);
             }
         }
