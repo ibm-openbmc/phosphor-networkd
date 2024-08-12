@@ -9,6 +9,7 @@
 #include "vlan_interface.hpp"
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <linux/ethtool.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
@@ -20,7 +21,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/log.hpp>
@@ -80,82 +80,56 @@ std::map<EthernetInterface::DHCPConf, std::string> mapDHCPToSystemd = {
     {EthernetInterface::DHCPConf::v6, "ipv6"},
     {EthernetInterface::DHCPConf::none, "false"}};
 
-EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(const std::string& ifname,
-                                                      int file) :
-    ifname(ifname),
-    fd(std::forward<int>(file)),
-    io(sdeventplus::Event::get_default(), fd.get(), EPOLLPRI | EPOLLERR,
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(EthernetInterface& intf,
+                                                      int fd) :
+    intf(intf),
+    io(sdeventplus::Event::get_default(), fd, EPOLLPRI | EPOLLERR,
        std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
                  std::placeholders::_2, std::placeholders::_3))
 {
-}
-
-static void setNICUp(std::string_view ifname, bool up)
-{
-    EthernetIntfSocket eifSocket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
-
-    if (eifSocket.sock < 0)
-    {
-        return;
-    }
-
-    ifreq ifr = {};
-    const auto size = std::min<std::size_t>(ifname.size(), IF_NAMESIZE - 1);
-    std::copy_n(ifname.begin(), size, ifr.ifr_name);
-    if (ioctl(eifSocket.sock, SIOCGIFFLAGS, &ifr) != 0)
-    {
-        return;
-    }
-
-    ifr.ifr_flags &= ~IFF_UP;
-    ifr.ifr_flags |= up ? IFF_UP : 0;
-
-    ioctl(eifSocket.sock, SIOCSIFFLAGS, &ifr);
 }
 
 void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
                                                    int, uint32_t)
 {
     char data[2];
-    auto r = read(fd.get(), data, sizeof(data));
+    auto r = read(io.get_fd(), data, sizeof(data));
 
     if (r < 2)
     {
-        auto msg =
-            fmt::format("Failed to read {} ncsi_timeout {}\n", ifname, r);
+        auto msg = fmt::format("Failed to read {} ncsi_timeout: {} from {}\n",
+                               intf.interfaceName(), r, io.get_fd());
         log<level::ERR>(msg.c_str());
         return;
     }
 
     if (data[0] != '0')
     {
-        auto msg =
-            fmt::format("{} NCSI timeout, setting link down/up\n", ifname);
+        auto msg = fmt::format("{} NCSI timeout, resetting interface\n",
+                               intf.interfaceName());
         log<level::WARNING>(msg.c_str());
 
-        // Clears the ncsi_timeout - link down should proceed despite error
-        r = write(fd.get(), data, sizeof(data));
-        if (r < 0)
+        int fd = intf.handleNCSITimeout();
+        if (fd >= 0)
         {
-            auto msg =
-                fmt::format("Failed to write {} ncsi_timeout {}\n", ifname, r);
-            log<level::ERR>(msg.c_str());
+            close(io.get_fd());
+            io.set_fd(fd);
+            return;
         }
-
-        setNICUp(ifname, false);
-
-        using namespace std::chrono_literals;
-        std::this_thread::sleep_for(1ms);
-
-        setNICUp(ifname, true);
+    }
+    else
+    {
+        auto msg = fmt::format("{} spurious NCSI timeout wake up\n",
+                               intf.interfaceName());
+        log<level::NOTICE>(msg.c_str());
     }
 
     // Must seek to zero otherwise the poll returns immediately
-    r = lseek(fd.get(), 0, SEEK_SET);
+    r = lseek(io.get_fd(), 0, SEEK_SET);
     if (r < 0)
     {
-        auto msg =
-            fmt::format("Failed to seek {} ncsi_timeout {}\n", ifname, r);
+        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n",
+                               intf.interfaceName(), r);
         log<level::ERR>(msg.c_str());
     }
 }
@@ -226,7 +200,8 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
     const std::filesystem::path dir = "/sys/class/net";
     for (auto&& d : std::filesystem::directory_iterator(dir))
     {
-        std::filesystem::path ifindex = d.path() / "ifindex";
+        const std::filesystem::path dirPath = d.path();
+        std::filesystem::path ifindex = dirPath / "ifindex";
         std::ifstream file(ifindex);
         unsigned int i;
 
@@ -238,17 +213,82 @@ EthernetInterface::EthernetInterface(sdbusplus::bus::bus& bus,
 
         if (i == ifIdx)
         {
-            std::filesystem::path ncsi_timeout = d.path() / "ncsi_timeout";
-            int fd = open(ncsi_timeout.c_str(), O_RDWR | O_NONBLOCK);
+            ncsiTimeoutPath = dirPath / "ncsi_timeout";
+            int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
 
             if (fd >= 0)
             {
+                std::error_code ec;
+                std::filesystem::path devPath = dirPath / "device";
+                std::filesystem::path device =
+                    std::filesystem::read_symlink(devPath, ec);
+
+                if (ec)
+                {
+                    auto msg =
+                        fmt::format("Failed to get device path from dir {}\n",
+                                    dirPath.string());
+                    log<level::WARNING>(msg.c_str());
+                }
+
+                std::filesystem::path driver =
+                    std::filesystem::read_symlink(devPath / "driver");
+                ncsiWatchDriver = std::filesystem::canonical(devPath / driver);
+
+                ncsiWatchDeviceName = device.filename().string();
+
+                auto msg = fmt::format("Starting to watch for NCSI timeout on "
+                                       "{} (device {} driver {}) with {}\n",
+                                       intfName, ncsiWatchDeviceName,
+                                       ncsiWatchDriver.string(), fd);
+                log<level::NOTICE>(msg.c_str());
+
                 ncsiTimeoutWatch =
-                    std::make_unique<NCSITimeoutWatch>(intfName, fd);
+                    std::make_unique<NCSITimeoutWatch>(*this, fd);
             }
             break;
         }
     }
+}
+
+int EthernetInterface::handleNCSITimeout()
+{
+    using namespace std::chrono_literals;
+
+    {
+        std::ofstream file(ncsiWatchDriver / "unbind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    {
+        std::ofstream file(ncsiWatchDriver / "bind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0)
+    {
+        auto msg = fmt::format(
+            "Restarting watch for NCSI timeout on {} (device {} driver {})\n",
+            interfaceName(), ncsiWatchDeviceName, ncsiWatchDriver.string());
+        log<level::NOTICE>(msg.c_str());
+    }
+    else
+    {
+        auto msg = fmt::format("Failed to restart watch for NCSI timeout on {} "
+                               "(device {} driver {})\n",
+                               interfaceName(), ncsiWatchDeviceName,
+                               ncsiWatchDriver.string());
+        log<level::WARNING>(msg.c_str());
+    }
+
+    return fd;
 }
 
 static IP::Protocol convertFamily(int family)
