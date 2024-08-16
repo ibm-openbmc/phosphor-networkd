@@ -345,8 +345,8 @@ void HypEthInterface::watchBaseBiosTable()
 
                     // Get prefix length
                     if ((attr.first)
-                            .ends_with(intf + "_" + protocol +
-                                       "_prefix_length"))
+                            .ends_with(
+                                intf + "_" + protocol + "_prefix_length"))
                     {
                         uint8_t currPrefixLen = static_cast<uint8_t>(
                             std::get<int64_t>(attr.second));
@@ -487,8 +487,8 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth0/v4",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(objectPath.str +
-                                                              "/ipv4/addr0"),
+                              sdbusplus::message::object_path(
+                                  objectPath.str + "/ipv4/addr0"),
                               *this, *ifaddrv4, "0.0.0.0",
                               HypIP::AddressOrigin::Static, intfLabel));
 
@@ -496,8 +496,8 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth0/v6",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(objectPath.str +
-                                                              "/ipv6/addr0"),
+                              sdbusplus::message::object_path(
+                                  objectPath.str + "/ipv6/addr0"),
                               *this, *ifaddrv6,
                               "::", HypIP::AddressOrigin::Static, intfLabel));
         }
@@ -509,8 +509,8 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth1/v4",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(objectPath.str +
-                                                              "/ipv4/addr0"),
+                              sdbusplus::message::object_path(
+                                  objectPath.str + "/ipv4/addr0"),
                               *this, *ifaddrv4, "0.0.0.0",
                               HypIP::AddressOrigin::Static, intfLabel));
 
@@ -518,8 +518,8 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth1/v6",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(objectPath.str +
-                                                              "/ipv6/addr0"),
+                              sdbusplus::message::object_path(
+                                  objectPath.str + "/ipv6/addr0"),
                               *this, *ifaddrv6,
                               "::", HypIP::AddressOrigin::Static, intfLabel));
         }
@@ -992,12 +992,12 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
 HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
 {
     auto old4 = HypEthernetIntf::dhcp4();
-    auto new4 = HypEthernetIntf::dhcp4(value == DHCPConf::v4 ||
-                                       value == DHCPConf::v4v6stateless ||
-                                       value == DHCPConf::both);
+    auto new4 = HypEthernetIntf::dhcp4(
+        value == DHCPConf::v4 || value == DHCPConf::v4v6stateless ||
+        value == DHCPConf::both);
     auto old6 = HypEthernetIntf::dhcp6();
-    auto new6 = HypEthernetIntf::dhcp6(value == DHCPConf::v6 ||
-                                       value == DHCPConf::both);
+    auto new6 = HypEthernetIntf::dhcp6(
+        value == DHCPConf::v6 || value == DHCPConf::both);
     auto oldra = HypEthernetIntf::ipv6AcceptRA();
     auto newra = HypEthernetIntf::ipv6AcceptRA(
         value == DHCPConf::v6stateless || value == DHCPConf::v4v6stateless ||

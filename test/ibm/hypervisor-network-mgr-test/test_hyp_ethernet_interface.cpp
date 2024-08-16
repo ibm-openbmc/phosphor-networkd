@@ -30,9 +30,8 @@ class TestHypEthernetInterface : public testing::Test
         interface.createIPAddrObj();
     }
 
-    static MockHypEthernetInterface
-        makeInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
-                      HypNetworkMgr& manager)
+    static MockHypEthernetInterface makeInterface(
+        stdplus::PinnedRef<sdbusplus::bus_t> bus, HypNetworkMgr& manager)
     {
         return {bus,
                 sdbusplus::message::object_path(

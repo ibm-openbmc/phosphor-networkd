@@ -71,8 +71,7 @@ class HypNetworkMgr
      */
     HypNetworkMgr(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                   stdplus::zstring_view path) :
-        bus(bus),
-        objectPath(std::string(path)){};
+        bus(bus), objectPath(std::string(path)) {};
 
     /** @brief Get the BaseBiosTable attributes
      *
