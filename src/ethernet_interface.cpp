@@ -1015,9 +1015,11 @@ void EthernetInterface::writeConfigurationFile()
         {
             if (!dhcp4())
             {
+                auto& gateways = network["Gateway"];
                 auto gateway4 = EthernetInterfaceIntf::defaultGateway();
-                if (!gateway4.empty())
+                if (!gateway4.empty() && prefixLength)
                 {
+                    gateways.emplace_back(gateway4);
                     auto& gateway4route = config.map["Route"].emplace_back();
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
