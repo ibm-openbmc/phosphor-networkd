@@ -82,6 +82,17 @@ std::string setIPv4AddressLastOctetToZero(const std::string& ip);
  */
 std::map<std::string, bool> parseLLDPConf();
 
+/** @brief Generate network route using given gateway and prefix length
+ *  @param[in] gateway - IPv4 address
+ *  @param[in] prefixLength - prefix length of IP address
+ */
+std::string generateNetworkRoute(const std::string& gateway, int prefixLength);
+
+/** @brief Generate unique routing table id for given interface
+ *  @param[in] iface - interface name
+ */
+uint32_t generateRouteTableID(const std::string& iface);
+
 namespace internal
 {
 
