@@ -778,14 +778,28 @@ void EthernetInterface::loadNTPServers(const config::Parser& config)
             "Failed to get NTP TimeSyncMethod from Systemd Settings");
     }
 
+    ServerList staticNTPServers = config.map.getValueStrings("Network", "NTP");
+
     // Read NTP servers from TimeSyncd only when NTP mode enabled.
     // This check is needed to avoid TimeSyncd calls when Manual mode set.
     if (timeSyncMethod == "xyz.openbmc_project.Time.Synchronization.Method.NTP")
     {
-        EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
+        ServerList ntpServerList = getNTPServerFromTimeSyncd();
+        std::unordered_set<std::string> staticNTPServersSet(
+            staticNTPServers.begin(), staticNTPServers.end());
+        ServerList networkSuppliedServers;
+
+        std::copy_if(ntpServerList.begin(), ntpServerList.end(),
+                     std::back_inserter(networkSuppliedServers),
+                     [&staticNTPServersSet](const std::string& server) {
+            return staticNTPServersSet.find(server) ==
+                   staticNTPServersSet.end();
+        });
+
+        EthernetInterfaceIntf::ntpServers(networkSuppliedServers);
     }
-    EthernetInterfaceIntf::staticNTPServers(
-        config.map.getValueStrings("Network", "NTP"));
+
+    EthernetInterfaceIntf::staticNTPServers(staticNTPServers);
 }
 
 void EthernetInterface::loadNameServers(const config::Parser& config)
