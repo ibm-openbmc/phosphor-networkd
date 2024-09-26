@@ -38,12 +38,11 @@ struct Proto<stdplus::In6Addr>
     static inline constexpr auto value = HypIP::Protocol::IPv6;
 };
 
-HypIPAddress::HypIPAddress(sdbusplus::bus::bus& bus,
-                           sdbusplus::message::object_path objPath,
-                           stdplus::PinnedRef<HypEthInterface> parent,
-                           stdplus::SubnetAny addr, const std::string& gateway,
-                           HypIP::AddressOrigin origin,
-                           const std::string& intf) :
+HypIPAddress::HypIPAddress(
+    sdbusplus::bus::bus& bus, sdbusplus::message::object_path objPath,
+    stdplus::PinnedRef<HypEthInterface> parent, stdplus::SubnetAny addr,
+    const std::string& gateway, HypIP::AddressOrigin origin,
+    const std::string& intf) :
     HypIPIfaces(bus, objPath.str.c_str(), HypIPIfaces::action::defer_emit),
     intf(std::move(intf)), parent(parent), objectPath(std::move(objPath))
 {
@@ -361,8 +360,8 @@ uint8_t HypIPAddress::prefixLength(uint8_t value)
     for (auto& it : parent.get().getBiosAttrsMap())
     {
         if ((it.first.compare(it.first.size() - prefixLenAttrName.size(),
-                              prefixLenAttrName.size(),
-                              prefixLenAttrName) == 0) &&
+                              prefixLenAttrName.size(), prefixLenAttrName) ==
+             0) &&
             (std::get<int64_t>(it.second) == length))
         {
             parent.get().setIpPropsInMap(it.first, value, "Integer");
