@@ -22,6 +22,7 @@
 #include <xyz/openbmc_project/Network/VLAN/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -283,12 +284,11 @@ class EthernetInterface : public Ifaces
   private:
     struct NCSITimeoutWatch
     {
-        NCSITimeoutWatch(const std::string& ifname, int file);
+        NCSITimeoutWatch(EthernetInterface& intf, int fd);
 
         void callback(sdeventplus::source::IO&, int, uint32_t);
 
-        const std::string ifname;
-        stdplus::ManagedFd fd;
+        EthernetInterface& intf;
         sdeventplus::source::IO io;
     };
     std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
@@ -297,6 +297,14 @@ class EthernetInterface : public Ifaces
                       stdplus::PinnedRef<Manager> manager,
                       const AllIntfInfo& info, std::string&& objPath,
                       const config::Parser& config, bool enabled);
+
+    int handleNCSITimeout();
+
+    std::filesystem::path ncsiTimeoutPath;
+    std::filesystem::path ncsiWatchDriver;
+    std::string ncsiWatchDeviceName;
+
+    friend struct NCSITimeoutWatch;
 };
 
 } // namespace network
