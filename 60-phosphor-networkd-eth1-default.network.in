@@ -1,4 +1,6 @@
 [Match]
+Name=eth1
+Name=!lo
 Type=ether
 [Network]
 DHCP=true
