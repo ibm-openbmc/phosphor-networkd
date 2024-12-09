@@ -27,6 +27,7 @@ namespace network
 using std::literals::string_view_literals::operator""sv;
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+static constexpr std::string_view lldpdConfigFilePath = "/etc/lldpd.conf";
 
 namespace internal
 {
@@ -252,8 +253,7 @@ std::string setIPv4AddressLastOctetToZero(const std::string& ip)
 
 std::map<std::string, bool> parseLLDPConf()
 {
-    std::string lldpFilePath = "/etc/lldpd.conf";
-    std::ifstream lldpdConfig(lldpFilePath);
+    std::ifstream lldpdConfig(lldpdConfigFilePath.data());
     std::map<std::string, bool> portStatus;
 
     if (!lldpdConfig.is_open())
@@ -264,22 +264,23 @@ std::map<std::string, bool> parseLLDPConf()
     std::string line;
     while (std::getline(lldpdConfig, line))
     {
-        if (line.find("configure ports eth0") != std::string::npos)
+        std::string configurePortsStr = "configure ports ";
+        std::string lldpStatusStr = "lldp status ";
+        size_t portStart = line.find(configurePortsStr);
+        if (portStart != std::string::npos)
         {
-            size_t pos = line.find("lldp status ");
-            if (pos != std::string::npos)
+            portStart += configurePortsStr.size();
+            size_t portEnd = line.find(' ', portStart);
+            if (portEnd == std::string::npos)
             {
-                std::string statusStr = line.substr(pos + 12);
-                portStatus["eth0"] = (statusStr == "disabled") ? false : true;
+                portEnd = line.length();
             }
-        }
-        else if (line.find("configure ports eth1") != std::string::npos)
-        {
-            size_t pos = line.find("lldp status ");
+            std::string portName = line.substr(portStart, portEnd - portStart);
+            size_t pos = line.find(lldpStatusStr);
             if (pos != std::string::npos)
             {
-                std::string statusStr = line.substr(pos + 12);
-                portStatus["eth1"] = (statusStr == "disabled") ? false : true;
+                std::string statusStr = line.substr(pos + lldpStatusStr.size());
+                portStatus[portName] = (statusStr == "disabled") ? false : true;
             }
         }
     }

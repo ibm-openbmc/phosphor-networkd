@@ -535,7 +535,7 @@ void Manager::writeLLDPDConfigurationFile()
 
     for (const auto& intf : interfaces)
     {
-        bool emitlldp = intf.second->EthernetInterfaceIntf::emitLLDP();
+        bool emitlldp = intf.second->emitLLDP();
         if (emitlldp)
         {
             lldpdConfig << "configure ports " << intf.second->interfaceName()
@@ -564,7 +564,6 @@ void Manager::reloadLLDPService()
     {
         lg2::error("Failed to restart service {SERVICE}: {ERR}", "SERVICE",
                    lldpService, "ERR", ex);
-        elog<InternalFailure>();
     }
 }
 
