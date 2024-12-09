@@ -15,6 +15,7 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <cctype>
+#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -247,6 +248,43 @@ std::string setIPv4AddressLastOctetToZero(const std::string& ip)
     std::string modifiedIP =
         octets[0] + "." + octets[1] + "." + octets[2] + "." + octets[3];
     return modifiedIP;
+}
+
+std::map<std::string, bool> parseLLDPConf()
+{
+    std::string lldpFilePath = "/etc/lldpd.conf";
+    std::ifstream lldpdConfig(lldpFilePath);
+    std::map<std::string, bool> portStatus;
+
+    if (!lldpdConfig.is_open())
+    {
+        return portStatus;
+    }
+
+    std::string line;
+    while (std::getline(lldpdConfig, line))
+    {
+        if (line.find("configure ports eth0") != std::string::npos)
+        {
+            size_t pos = line.find("lldp status ");
+            if (pos != std::string::npos)
+            {
+                std::string statusStr = line.substr(pos + 12);
+                portStatus["eth0"] = (statusStr == "disabled") ? false : true;
+            }
+        }
+        else if (line.find("configure ports eth1") != std::string::npos)
+        {
+            size_t pos = line.find("lldp status ");
+            if (pos != std::string::npos)
+            {
+                std::string statusStr = line.substr(pos + 12);
+                portStatus["eth1"] = (statusStr == "disabled") ? false : true;
+            }
+        }
+    }
+    lldpdConfig.close();
+    return portStatus;
 }
 
 } // namespace network
