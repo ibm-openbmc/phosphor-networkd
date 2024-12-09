@@ -4,6 +4,7 @@
 #include <stdplus/raw.hpp>
 #include <stdplus/zstring.hpp>
 
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -128,6 +129,10 @@ std::string generateNetworkRoute(const std::string& gateway, int prefixLength);
  *  @param[in] iface - interface name
  */
 uint32_t generateRouteTableID(const std::string& iface);
+
+/** @brief Read LLDP configuration from lldpd conf file
+ */
+std::map<std::string, bool> parseLLDPConf();
 
 namespace internal
 {
