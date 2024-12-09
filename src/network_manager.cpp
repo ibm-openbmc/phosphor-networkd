@@ -210,7 +210,6 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
     auto ptr = intf.get();
     interfaces.insert_or_assign(*info.intf.name, std::move(intf));
     interfacesByIdx.insert_or_assign(info.intf.idx, ptr);
-    loadDefaultLLDPConfig();
 }
 
 void Manager::addInterface(const InterfaceInfo& info)
@@ -530,25 +529,11 @@ void Manager::handleAdminState(std::string_view state, unsigned ifidx)
     }
 }
 
-void Manager::loadDefaultLLDPConfig()
-{
-    std::ofstream lldpdConfig(lldpFilePath);
-
-    lldpdConfig << "configure system description BMC" << std::endl;
-
-    for (const auto& intf : interfaces)
-    {
-        lldpdConfig << "configure ports " << intf.second->interfaceName()
-                    << " lldp status disabled" << std::endl;
-    }
-
-    lldpdConfig.close();
-}
-
 void Manager::writeLLDPDConfigurationFile()
 {
     std::ofstream lldpdConfig(lldpFilePath);
 
+    lldpdConfig << "configure system description BMC" << std::endl;
     for (const auto& intf : interfaces)
     {
         bool emitlldp = intf.second->emitLLDP();
