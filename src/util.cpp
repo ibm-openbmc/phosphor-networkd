@@ -15,6 +15,7 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <cctype>
+#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -26,6 +27,7 @@ namespace network
 using std::literals::string_view_literals::operator""sv;
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+static constexpr std::string_view lldpdConfigFilePath = "/etc/lldpd.conf";
 
 namespace internal
 {
@@ -247,6 +249,43 @@ std::string setIPv4AddressLastOctetToZero(const std::string& ip)
     std::string modifiedIP =
         octets[0] + "." + octets[1] + "." + octets[2] + "." + octets[3];
     return modifiedIP;
+}
+
+std::map<std::string, bool> parseLLDPConf()
+{
+    std::ifstream lldpdConfig(lldpdConfigFilePath.data());
+    std::map<std::string, bool> portStatus;
+
+    if (!lldpdConfig.is_open())
+    {
+        return portStatus;
+    }
+
+    std::string line;
+    while (std::getline(lldpdConfig, line))
+    {
+        std::string configurePortsStr = "configure ports ";
+        std::string lldpStatusStr = "lldp status ";
+        size_t portStart = line.find(configurePortsStr);
+        if (portStart != std::string::npos)
+        {
+            portStart += configurePortsStr.size();
+            size_t portEnd = line.find(' ', portStart);
+            if (portEnd == std::string::npos)
+            {
+                portEnd = line.length();
+            }
+            std::string portName = line.substr(portStart, portEnd - portStart);
+            size_t pos = line.find(lldpStatusStr);
+            if (pos != std::string::npos)
+            {
+                std::string statusStr = line.substr(pos + lldpStatusStr.size());
+                portStatus[portName] = (statusStr == "disabled") ? false : true;
+            }
+        }
+    }
+    lldpdConfig.close();
+    return portStatus;
 }
 
 } // namespace network

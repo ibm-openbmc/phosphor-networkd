@@ -4,6 +4,7 @@
 #include <stdplus/raw.hpp>
 #include <stdplus/zstring_view.hpp>
 
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -76,6 +77,10 @@ bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
  *  @param[in] ip - IPv4 address
  */
 std::string setIPv4AddressLastOctetToZero(const std::string& ip);
+
+/** @brief Read LLDP configuration from lldpd conf file
+ */
+std::map<std::string, bool> parseLLDPConf();
 
 namespace internal
 {
