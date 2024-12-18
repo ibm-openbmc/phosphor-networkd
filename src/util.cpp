@@ -225,6 +225,30 @@ bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
         .value_or(true);
 }
 
+std::string setIPv4AddressLastOctetToZero(const std::string& ip)
+{
+    std::vector<std::string> octets;
+    std::string octet;
+    std::stringstream ss(ip);
+
+    // Split the IP address by '.'
+    while (std::getline(ss, octet, '.'))
+    {
+        octets.push_back(octet);
+    }
+
+    // Modify the last octet
+    if (octets.size() == 4)
+    {
+        octets[3] = "0";
+    }
+
+    std::string modifiedIP = octets[0] + "." + octets[1] + "." + octets[2] +
+                             "." + octets[3];
+
+    return modifiedIP;
+}
+
 namespace mac_address
 {
 
