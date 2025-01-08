@@ -1099,6 +1099,7 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv4Static";
+                    (itr->second)->origin(HypIP::AddressOrigin::Static);
                     // Reset IPv4 to the defaults only when dhcpv4 is disabled;
                     // if the old4 is false (which means static), then
                     // reset shouldn't happen in order to restore the static
