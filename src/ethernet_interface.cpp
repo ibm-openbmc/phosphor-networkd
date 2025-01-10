@@ -617,7 +617,17 @@ ObjectPath EthernetInterface::staticRoute(std::string destination,
     InAddrAny addr;
     try
     {
-        addr = ToAddr<InAddrAny>{}(gateway);
+        switch (protocolType)
+        {
+            case IP::Protocol::IPv4:
+                addr = ToAddr<in_addr>{}(gateway);
+                break;
+            case IP::Protocol::IPv6:
+                addr = ToAddr<in6_addr>{}(gateway);
+                break;
+            default:
+                throw std::logic_error("Exhausted protocols");
+        }
     }
     catch (const std::exception& e)
     {
