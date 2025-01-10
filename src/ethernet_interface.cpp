@@ -617,7 +617,7 @@ ObjectPath EthernetInterface::staticRoute(std::string destination,
     InAddrAny addr;
     try
     {
-        switch(protocolType)
+        switch (protocolType)
         {
             case IP::Protocol::IPv4:
                 addr = ToAddr<in_addr>{}(gateway);
