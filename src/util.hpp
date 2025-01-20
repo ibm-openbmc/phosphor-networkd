@@ -29,7 +29,7 @@ constexpr bool validUnicast(in_addr addr) noexcept
 
 constexpr bool validUnicast(in6_addr addr) noexcept
 {
-    return addr != in6_addr{} &&                       // ::/128
+    return addr != in6_addr{} && // ::/128
            addr != in6_addr{0, 0, 0, 0, 0, 0, 0, 0,
                             0, 0, 0, 0, 0, 0, 0, 1} && // ::1/128
            addr.s6_addr[0] != 0xff;                    // ff00::/8
