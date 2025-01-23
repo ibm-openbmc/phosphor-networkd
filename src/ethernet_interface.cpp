@@ -7,6 +7,7 @@
 #include "system_queries.hpp"
 #include "util.hpp"
 
+#include <arpa/inet.h>
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <net/if_arp.h>
@@ -21,9 +22,12 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 
@@ -79,6 +83,59 @@ static bool validIntfIP(Addr a) noexcept
     return a.isUnicast() && !a.isLoopback();
 }
 
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(EthernetInterface& intf,
+                                                      int fd) :
+    intf(intf),
+    io(sdeventplus::Event::get_default(), fd, EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(io.get_fd(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        auto msg = fmt::format("Failed to read {} ncsi_timeout: {} from {}\n",
+                               intf.interfaceName(), r, io.get_fd());
+        log<level::ERR>(msg.c_str());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        auto msg = fmt::format("{} NCSI timeout, resetting interface\n",
+                               intf.interfaceName());
+        log<level::WARNING>(msg.c_str());
+
+        int fd = intf.handleNCSITimeout();
+        if (fd >= 0)
+        {
+            close(io.get_fd());
+            io.set_fd(fd);
+            return;
+        }
+    }
+    else
+    {
+        auto msg = fmt::format("{} spurious NCSI timeout wake up\n",
+                               intf.interfaceName());
+        log<level::NOTICE>(msg.c_str());
+    }
+
+    // Must seek to zero otherwise the poll returns immediately
+    r = lseek(io.get_fd(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n",
+                               intf.interfaceName(), r);
+        log<level::ERR>(msg.c_str());
+    }
+}
+
 EthernetInterface::EthernetInterface(
     stdplus::PinnedRef<sdbusplus::bus_t> bus,
     stdplus::PinnedRef<Manager> manager, const AllIntfInfo& info,
@@ -100,7 +157,11 @@ EthernetInterface::EthernetInterface(
     EthernetInterfaceIntf::dhcp6(dhcpVal.v6, true);
     EthernetInterfaceIntf::ipv6AcceptRA(getIPv6AcceptRA(config), true);
     EthernetInterfaceIntf::nicEnabled(enabled, true);
-
+    auto lldpVal = parseLLDPConf();
+    if (!lldpVal.empty())
+    {
+        EthernetInterfaceIntf::emitLLDP(lldpVal[interfaceName()], true);
+    }
     EthernetInterfaceIntf::ntpServers(
         config.map.getValueStrings("Network", "NTP"), true);
 
@@ -134,6 +195,102 @@ EthernetInterface::EthernetInterface(
     {
         addStaticNeigh(neigh);
     }
+    for (const auto& [_, staticGateway] : info.staticGateways)
+    {
+        addStaticGateway(staticGateway);
+    }
+
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        const std::filesystem::path dirPath = d.path();
+        std::filesystem::path ifindex = dirPath / "ifindex";
+        std::ifstream file(ifindex);
+        unsigned int i;
+
+        file >> i;
+        if (!file)
+        {
+            continue;
+        }
+
+        if (i == info.intf.idx)
+        {
+            ncsiTimeoutPath = dirPath / "ncsi_timeout";
+            int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
+            {
+                std::error_code ec;
+                std::filesystem::path devPath = dirPath / "device";
+                std::filesystem::path device =
+                    std::filesystem::read_symlink(devPath, ec);
+
+                if (ec)
+                {
+                    auto msg =
+                        fmt::format("Failed to get device path from dir {}\n",
+                                    dirPath.string());
+                    log<level::WARNING>(msg.c_str());
+                }
+
+                std::filesystem::path driver =
+                    std::filesystem::read_symlink(devPath / "driver");
+                ncsiWatchDriver = std::filesystem::canonical(devPath / driver);
+
+                ncsiWatchDeviceName = device.filename().string();
+
+                auto msg = fmt::format(
+                    "Starting to watch for NCSI timeout on {} (device {} driver {}) with {}\n",
+                    *info.intf.name, ncsiWatchDeviceName,
+                    ncsiWatchDriver.string(), fd);
+                log<level::NOTICE>(msg.c_str());
+
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(*this, fd);
+            }
+            break;
+        }
+    }
+}
+
+int EthernetInterface::handleNCSITimeout()
+{
+    using namespace std::chrono_literals;
+
+    {
+        std::ofstream file(ncsiWatchDriver / "unbind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    {
+        std::ofstream file(ncsiWatchDriver / "bind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0)
+    {
+        auto msg = fmt::format(
+            "Restarting watch for NCSI timeout on {} (device {} driver {})\n",
+            interfaceName(), ncsiWatchDeviceName, ncsiWatchDriver.string());
+        log<level::NOTICE>(msg.c_str());
+    }
+    else
+    {
+        auto msg = fmt::format(
+            "Failed to restart watch for NCSI timeout on {} (device {} driver {})\n",
+            interfaceName(), ncsiWatchDeviceName, ncsiWatchDriver.string());
+        log<level::WARNING>(msg.c_str());
+    }
+
+    return fd;
 }
 
 void EthernetInterface::updateInfo(const InterfaceInfo& info, bool skipSignal)
@@ -156,6 +313,19 @@ void EthernetInterface::updateInfo(const InterfaceInfo& info, bool skipSignal)
         EthernetInterfaceIntf::autoNeg(ethInfo.autoneg, skipSignal);
         EthernetInterfaceIntf::speed(ethInfo.speed, skipSignal);
     }
+}
+
+bool EthernetInterface::originIsManuallyAssigned(IP::AddressOrigin origin)
+{
+    return (
+#ifdef LINK_LOCAL_AUTOCONFIGURATION
+        (origin == IP::AddressOrigin::Static)
+#else
+        (origin == IP::AddressOrigin::Static ||
+         origin == IP::AddressOrigin::LinkLocal)
+#endif
+
+    );
 }
 
 void EthernetInterface::addAddr(const AddressInfo& info)
@@ -221,6 +391,77 @@ void EthernetInterface::addStaticNeigh(const NeighborInfo& info)
             *info.addr, std::make_unique<Neighbor>(
                             bus, std::string_view(objPath), *this, *info.addr,
                             *info.mac, Neighbor::State::Permanent));
+    }
+}
+
+void EthernetInterface::addStaticGateway(const StaticGatewayInfo& info)
+{
+    if (!info.gateway)
+    {
+        lg2::error("Missing static gateway on {NET_INTF}", "NET_INTF",
+                   interfaceName());
+        return;
+    }
+
+    IP::Protocol protocolType;
+    if (*info.protocol == "IPv4")
+    {
+        protocolType = IP::Protocol::IPv4;
+    }
+    else if (*info.protocol == "IPv6")
+    {
+        protocolType = IP::Protocol::IPv6;
+    }
+
+    if (auto it = staticGateways.find(*info.gateway);
+        it != staticGateways.end())
+    {
+        it->second->StaticGatewayObj::gateway(*info.gateway);
+    }
+    else
+    {
+        staticGateways.emplace(*info.gateway,
+                               std::make_unique<StaticGateway>(
+                                   bus, std::string_view(objPath), *this,
+                                   *info.gateway, protocolType));
+    }
+}
+
+bool EthernetInterface::dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol)
+{
+    return ((EthernetInterfaceIntf::dhcpEnabled() ==
+             EthernetInterface::DHCPConf::both) ||
+            ((EthernetInterfaceIntf::dhcpEnabled() ==
+              EthernetInterface::DHCPConf::v6) &&
+             ((family == IP::Protocol::IPv6) || ignoreProtocol)) ||
+            ((EthernetInterfaceIntf::dhcpEnabled() ==
+              EthernetInterface::DHCPConf::v4) &&
+             ((family == IP::Protocol::IPv4) || ignoreProtocol)));
+}
+
+void EthernetInterface::disableDHCP(IP::Protocol protocol)
+{
+    DHCPConf dhcpState = EthernetInterfaceIntf::dhcpEnabled();
+    if (dhcpState == EthernetInterface::DHCPConf::both)
+    {
+        if (protocol == IP::Protocol::IPv4)
+        {
+            dhcpEnabled(EthernetInterface::DHCPConf::v6);
+        }
+        else if (protocol == IP::Protocol::IPv6)
+        {
+            dhcpEnabled(EthernetInterface::DHCPConf::v4);
+        }
+    }
+    else if ((dhcpState == EthernetInterface::DHCPConf::v4) &&
+             (protocol == IP::Protocol::IPv4))
+    {
+        dhcpEnabled(EthernetInterface::DHCPConf::none);
+    }
+    else if ((dhcpState == EthernetInterface::DHCPConf::v6) &&
+             (protocol == IP::Protocol::IPv6))
+    {
+        dhcpEnabled(EthernetInterface::DHCPConf::none);
     }
 }
 
@@ -291,6 +532,14 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
     writeConfigurationFile();
     manager.get().reloadConfigs();
 
+    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
+    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
+    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
+    {
+	lg2::error("dhcpIsEnabled, disable DHCP");
+        disableDHCP(protType);
+    }
+
     return it->second->getObjPath();
 }
 
@@ -347,6 +596,43 @@ ObjectPath EthernetInterface::neighbor(std::string ipAddress,
     return it->second->getObjPath();
 }
 
+ObjectPath EthernetInterface::staticGateway(std::string gateway,
+                                            IP::Protocol protocolType)
+{
+    std::optional<stdplus::InAnyAddr> addr;
+    std::string route;
+    try
+    {
+        addr.emplace(stdplus::fromStr<stdplus::InAnyAddr>(gateway));
+        route = gateway;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Not a valid IP address {GATEWAY}: {ERROR}", "GATEWAY",
+                   gateway, "ERROR", e);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("gateway"),
+                              Argument::ARGUMENT_VALUE(gateway.c_str()));
+    }
+
+    auto it = staticGateways.find(route);
+    if (it == staticGateways.end())
+    {
+        it = std::get<0>(staticGateways.emplace(
+            route,
+            std::make_unique<StaticGateway>(bus, std::string_view(objPath),
+                                            *this, gateway, protocolType)));
+    }
+    else
+    {
+        it->second->StaticGatewayObj::gateway(gateway);
+    }
+
+    writeConfigurationFile();
+    manager.get().reloadConfigs();
+
+    return it->second->getObjPath();
+}
+
 bool EthernetInterface::ipv6AcceptRA(bool value)
 {
     if (ipv6AcceptRA() != EthernetInterfaceIntf::ipv6AcceptRA(value))
@@ -377,26 +663,42 @@ bool EthernetInterface::dhcp6(bool value)
     return value;
 }
 
+void EthernetInterface::deleteStaticIPv4Addresses()
+{
+    std::unique_ptr<IPAddress> ptr;
+    for (auto it = addrs.begin(); it != addrs.end();)
+    {
+        if ((it->second->origin() == IP::AddressOrigin::Static) &&
+            (it->second->type() == IP::Protocol::IPv4))
+        {
+            ptr = std::move(it->second);
+            it = addrs.erase(it);
+            writeConfigurationFile();
+            manager.get().reloadConfigs();
+        }
+        else
+        {
+            it++;
+        }
+    }
+}
+
 EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
 {
-    auto old4 = EthernetInterfaceIntf::dhcp4();
-    auto new4 = EthernetInterfaceIntf::dhcp4(
-        value == DHCPConf::v4 || value == DHCPConf::v4v6stateless ||
-        value == DHCPConf::both);
-    auto old6 = EthernetInterfaceIntf::dhcp6();
-    auto new6 = EthernetInterfaceIntf::dhcp6(
-        value == DHCPConf::v6 || value == DHCPConf::both);
-    auto oldra = EthernetInterfaceIntf::ipv6AcceptRA();
-    auto newra = EthernetInterfaceIntf::ipv6AcceptRA(
-        value == DHCPConf::v6stateless || value == DHCPConf::v4v6stateless ||
-        value == DHCPConf::v6 || value == DHCPConf::both);
-
-    if (old4 != new4 || old6 != new6 || oldra != newra)
+    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
+    // coexistence
+    if ((value == DHCPConf::v4) || (value == DHCPConf::both))
     {
-        writeConfigurationFile();
-        manager.get().reloadConfigs();
+        // Delete all IPv4 static addresses while enabling DHCP
+        deleteStaticIPv4Addresses();
     }
-    return value;
+
+    EthernetInterfaceIntf::dhcp4(value == DHCPConf::v4 ||
+                                 value == DHCPConf::both);
+    EthernetInterfaceIntf::dhcp6(value == DHCPConf::v6 ||
+                                 value == DHCPConf::both);
+    writeConfigurationFile();
+    manager.get().reloadConfigs();
 }
 
 EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled() const
@@ -435,6 +737,14 @@ bool EthernetInterface::nicEnabled(bool value)
 
     EthernetInterfaceIntf::nicEnabled(value);
     writeConfigurationFile();
+    if (!value)
+    {
+        // We only need to bring down the interface, networkd will always bring
+        // up managed interfaces
+        manager.get().addReloadPreHook([ifname = interfaceName()]() {
+            system::setNICUp(ifname, false);
+        });
+    }
     manager.get().reloadConfigs();
 
     return value;
@@ -474,9 +784,22 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
 
 void EthernetInterface::loadNTPServers(const config::Parser& config)
 {
-    EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
-    EthernetInterfaceIntf::staticNTPServers(
-        config.map.getValueStrings("Network", "NTP"));
+    ServerList ntpServerList = getNTPServerFromTimeSyncd();
+    ServerList staticNTPServers = config.map.getValueStrings("Network", "NTP");
+
+    std::unordered_set<std::string> staticNTPServersSet(
+        staticNTPServers.begin(), staticNTPServers.end());
+    ServerList networkSuppliedServers;
+
+    std::copy_if(ntpServerList.begin(), ntpServerList.end(),
+                 std::back_inserter(networkSuppliedServers),
+                 [&staticNTPServersSet](const std::string& server) {
+                     return staticNTPServersSet.find(server) ==
+                            staticNTPServersSet.end();
+                 });
+
+    EthernetInterfaceIntf::ntpServers(networkSuppliedServers);
+    EthernetInterfaceIntf::staticNTPServers(staticNTPServers);
 }
 
 void EthernetInterface::loadNameServers(const config::Parser& config)
@@ -484,6 +807,28 @@ void EthernetInterface::loadNameServers(const config::Parser& config)
     EthernetInterfaceIntf::nameservers(getNameServerFromResolvd());
     EthernetInterfaceIntf::staticNameServers(
         config.map.getValueStrings("Network", "DNS"));
+}
+
+void EthernetInterface::loadStaticGateways(const config::Parser& config)
+{
+    std::vector<std::string> gateways =
+        config.map.getValueStrings("Route", "Gateway");
+    for (uint8_t i = 0; i < gateways.size(); i++)
+    {
+        std::optional<stdplus::InAnyAddr> addr;
+        IP::Protocol addressType;
+        unsigned char buf[sizeof(struct in6_addr)];
+        int status6 = inet_pton(AF_INET6, gateways[i].c_str(), buf);
+        if (status6)
+        {
+            addr.emplace(stdplus::fromStr<stdplus::In6Addr>(gateways[i]));
+            addressType = IP::Protocol::IPv6;
+            staticGateways.emplace(gateways[i],
+                                   std::make_unique<StaticGateway>(
+                                       bus, std::string_view(objPath), *this,
+                                       gateways[i], addressType));
+        }
+    }
 }
 
 ServerList EthernetInterface::getNTPServerFromTimeSyncd()
@@ -686,14 +1031,21 @@ void EthernetInterface::writeConfigurationFile()
 #endif
         if (!EthernetInterfaceIntf::nicEnabled())
         {
-            link["ActivationPolicy"].emplace_back("down");
+            link["Unmanaged"].emplace_back("yes");
         }
     }
     {
         auto& network = config.map["Network"].emplace_back();
         auto& lla = network["LinkLocalAddressing"];
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-        lla.emplace_back("yes");
+        if (interfaceName() == "eth0")
+        {
+            lla.emplace_back("yes");
+        }
+        else if (interfaceName() == "eth1")
+        {
+            lla.emplace_back("ipv6");
+        }
 #else
         lla.emplace_back("no");
 #endif
@@ -724,25 +1076,58 @@ void EthernetInterface::writeConfigurationFile()
                 dnss.emplace_back(dns);
             }
         }
+        uint8_t prefixLength = 0;
         {
             auto& address = network["Address"];
             for (const auto& addr : addrs)
             {
-                if (addr.second->origin() == IP::AddressOrigin::Static)
+                if (originIsManuallyAssigned(addr.second->origin()))
                 {
                     address.emplace_back(stdplus::toStr(addr.first));
+                    if (addr.second->type() == IP::Protocol::IPv4)
+                    {
+                        prefixLength = addr.second->prefixLength();
+                    }
                 }
             }
         }
         {
             if (!dhcp4())
             {
+                auto& gateways = network["Gateway"];
                 auto gateway4 = EthernetInterfaceIntf::defaultGateway();
-                if (!gateway4.empty())
+                if (!gateway4.empty() && prefixLength)
                 {
+                    gateways.emplace_back(gateway4);
                     auto& gateway4route = config.map["Route"].emplace_back();
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
+                    // Creating different routing tables for each ethernet
+                    // interface to solve eth0 and eth1 route entry order issues
+                    // Routing table id of "eth0" interface is 10
+                    // Routing table id of "eth1" interface is 20
+                    std::string routingTableId;
+                    if (interfaceName() == "eth0")
+                    {
+                        routingTableId = "10";
+                    }
+                    else if (interfaceName() == "eth1")
+                    {
+                        routingTableId = "20";
+                    }
+                    gateway4route["Table"].emplace_back(routingTableId);
+                    std::string routeAddressPrefix =
+                        setIPv4AddressLastOctetToZero(gateway4);
+                    routeAddressPrefix =
+                        routeAddressPrefix + "/" + std::to_string(prefixLength);
+                    auto& routingPolicyTo =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyTo["Table"].emplace_back(routingTableId);
+                    routingPolicyTo["To"].emplace_back(routeAddressPrefix);
+                    auto& routingPolicyFrom =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyFrom["Table"].emplace_back(routingTableId);
+                    routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
                 }
             }
 
@@ -788,6 +1173,17 @@ void EthernetInterface::writeConfigurationFile()
         dhcp6["SendHostname"].emplace_back(
             tfStr(dhcp6Conf->sendHostNameEnabled()));
     }
+
+    {
+        auto& sroutes = config.map["Route"];
+        for (const auto& temp : staticGateways)
+        {
+            auto& staticGateway = sroutes.emplace_back();
+            staticGateway["Gateway"].emplace_back(temp.second->gateway());
+            staticGateway["GatewayOnLink"].emplace_back("true");
+        }
+    }
+
     auto path =
         config::pathForIntfConf(manager.get().getConfDir(), interfaceName());
     config.writeFile(path);
@@ -808,12 +1204,14 @@ std::string EthernetInterface::macAddress([[maybe_unused]] std::string value)
     {
         newMAC = stdplus::fromStr<stdplus::EtherAddr>(value);
     }
-    catch (const std::invalid_argument&)
+    catch (const std::exception& e)
     {
-        lg2::error("MAC Address {NET_MAC} is not valid", "NET_MAC", value);
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("MACAddress"),
+        lg2::error("Invalid Ip address {NET_MAC}: {ERROR}", "NET_MAC", value,
+                   "ERROR", e);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("netmac"),
                               Argument::ARGUMENT_VALUE(value.c_str()));
     }
+
     if (!newMAC.isUnicast())
     {
         lg2::error("MAC Address {NET_MAC} is not valid", "NET_MAC", value);
@@ -982,9 +1380,89 @@ void EthernetInterface::VlanProperties::delete_()
     eth.get().manager.get().reloadConfigs();
 }
 
+bool EthernetInterface::emitLLDP(bool value)
+{
+    if (emitLLDP() != EthernetInterfaceIntf::emitLLDP(value))
+    {
+        manager.get().writeLLDPDConfigurationFile();
+        manager.get().reloadLLDPService();
+    }
+    return value;
+}
+
 void EthernetInterface::reloadConfigs()
 {
     manager.get().reloadConfigs();
+}
+
+void EthernetInterface::watchNTPServers()
+{
+    ntpServerMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/timesync1',"
+        "arg0='org.freedesktop.timesync1.Manager'",
+        [this](sdbusplus::message::message& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::vector<std::string>>>
+                changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.timesync1.Manager")
+            {
+                auto it = changedProperties.find("LinkNTPServers");
+                if (it != changedProperties.end())
+                {
+                    lg2::info("NTP server ip updated in timesyncd");
+                    config::Parser config(config::pathForIntfConf(
+                        manager.get().getConfDir(), interfaceName()));
+                    loadNTPServers(config);
+                }
+            }
+        });
+}
+
+void EthernetInterface::watchTimeSyncActiveState()
+{
+    activeStateMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/systemd1/unit/systemd_2dtimesyncd_2eservice',"
+        "arg0='org.freedesktop.systemd1.Unit'",
+        [this](sdbusplus::message::message& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::string>> changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.systemd1.Unit")
+            {
+                auto it = changedProperties.find("ActiveState");
+                if (it != changedProperties.end())
+                {
+                    std::string activeState = std::get<std::string>(it->second);
+                    if (activeState == "active" || activeState == "inactive")
+                    {
+                        lg2::info("systemd-timesyncd switched to : {SYD_STATE}",
+                                  "SYD_STATE", activeState);
+                        config::Parser config(config::pathForIntfConf(
+                            manager.get().getConfDir(), interfaceName()));
+                        loadNTPServers(config);
+                    }
+                }
+            }
+        });
 }
 
 } // namespace network

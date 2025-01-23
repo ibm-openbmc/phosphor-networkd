@@ -2,21 +2,27 @@
 #include "dhcp_configuration.hpp"
 #include "ipaddress.hpp"
 #include "neighbor.hpp"
+#include "static_gateway.hpp"
 #include "types.hpp"
 #include "xyz/openbmc_project/Network/IP/Create/server.hpp"
 #include "xyz/openbmc_project/Network/Neighbor/CreateStatic/server.hpp"
+#include "xyz/openbmc_project/Network/StaticGateway/Create/server.hpp"
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <sdeventplus/source/io.hpp>
+#include <stdplus/fd/managed.hpp>
 #include <stdplus/pinned.hpp>
 #include <stdplus/str/maps.hpp>
 #include <stdplus/zstring_view.hpp>
 #include <xyz/openbmc_project/Collection/DeleteAll/server.hpp>
 #include <xyz/openbmc_project/Network/EthernetInterface/server.hpp>
 #include <xyz/openbmc_project/Network/MACAddress/server.hpp>
+#include <xyz/openbmc_project/Network/StaticGateway/server.hpp>
 #include <xyz/openbmc_project/Network/VLAN/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -31,6 +37,7 @@ using Ifaces = sdbusplus::server::object_t<
     sdbusplus::xyz::openbmc_project::Network::server::MACAddress,
     sdbusplus::xyz::openbmc_project::Network::IP::server::Create,
     sdbusplus::xyz::openbmc_project::Network::Neighbor::server::CreateStatic,
+    sdbusplus::xyz::openbmc_project::Network::StaticGateway::server::Create,
     sdbusplus::xyz::openbmc_project::Collection::server::DeleteAll>;
 
 using VlanIfaces = sdbusplus::server::object_t<
@@ -45,6 +52,8 @@ using EthernetInterfaceIntf =
     sdbusplus::xyz::openbmc_project::Network::server::EthernetInterface;
 using MacAddressIntf =
     sdbusplus::xyz::openbmc_project::Network::server::MACAddress;
+using StaticGatewayIntf =
+    sdbusplus::xyz::openbmc_project::Network::server::StaticGateway;
 
 using ServerList = std::vector<std::string>;
 using ObjectPath = sdbusplus::message::object_path;
@@ -94,8 +103,13 @@ class EthernetInterface : public Ifaces
     std::unordered_map<stdplus::InAnyAddr, std::unique_ptr<Neighbor>>
         staticNeighbors;
 
+    /** @brief Persistent map of static route dbus objects and their names */
+    std::unordered_map<std::string, std::unique_ptr<StaticGateway>>
+        staticGateways;
+
     void addAddr(const AddressInfo& info);
     void addStaticNeigh(const NeighborInfo& info);
+    void addStaticGateway(const StaticGatewayInfo& info);
 
     /** @brief Updates the interface information based on new InterfaceInfo */
     void updateInfo(const InterfaceInfo& info, bool skipSignal = false);
@@ -107,6 +121,22 @@ class EthernetInterface : public Ifaces
     /** @brief Function used to load the nameservers.
      */
     void loadNameServers(const config::Parser& config);
+
+    /** @brief Function used to delete IPv4 static addresses
+     */
+    void deleteStaticIPv4Addresses();
+
+    /** @brief Function used to load the static routes.
+     */
+    void loadStaticGateways(const config::Parser& config);
+
+    /** @brief Function used to watch change in NTP server.
+     */
+    void watchNTPServers();
+
+    /** @brief Function to watch status of systemd timesyncd.
+     */
+    void watchTimeSyncActiveState();
 
     /** @brief Function to create ipAddress dbus object.
      *  @param[in] addressType - Type of ip address.
@@ -122,6 +152,14 @@ class EthernetInterface : public Ifaces
      *  @param[in] macAddress - Low level MAC address.
      */
     ObjectPath neighbor(std::string ipAddress, std::string macAddress) override;
+
+    /** @brief Function to create static route dbus object.
+     *  @param[in] destination - Destination IP address.
+     *  @param[in] gateway - Gateway
+     *  @parma[in] prefixLength - Number of network bits.
+     */
+    ObjectPath staticGateway(std::string gateway,
+                             IP::Protocol protocolType) override;
 
     /** Set value of DHCPEnabled */
     DHCPConf dhcpEnabled() const override;
@@ -208,6 +246,14 @@ class EthernetInterface : public Ifaces
      */
     void reloadConfigs();
 
+    /** @brief set conf file for LLDP
+     *  @param[in] value - lldp value of the interface.
+     */
+    bool emitLLDP(bool value) override;
+
+    bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
+    void disableDHCP(IP::Protocol protocol);
+
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
     using EthernetInterfaceIntf::mtu;
@@ -216,6 +262,7 @@ class EthernetInterface : public Ifaces
 
     using EthernetInterfaceIntf::defaultGateway;
     using EthernetInterfaceIntf::defaultGateway6;
+    using EthernetInterfaceIntf::emitLLDP;
 
   protected:
     /** @brief get the NTP server list from the timsyncd dbus obj
@@ -254,10 +301,38 @@ class EthernetInterface : public Ifaces
     friend class TestNetworkManager;
 
   private:
+    struct NCSITimeoutWatch
+    {
+        NCSITimeoutWatch(EthernetInterface& intf, int fd);
+
+        void callback(sdeventplus::source::IO&, int, uint32_t);
+
+        EthernetInterface& intf;
+        sdeventplus::source::IO io;
+    };
+    std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
+
     EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                       stdplus::PinnedRef<Manager> manager,
                       const AllIntfInfo& info, std::string&& objPath,
                       const config::Parser& config, bool enabled);
+
+    /** @brief Determines if the address is manually assigned
+     *  @param[in] origin - The origin entry of the IP::Address
+     *  @returns true/false value if the address is static
+     */
+    bool originIsManuallyAssigned(IP::AddressOrigin origin);
+
+    std::unique_ptr<sdbusplus::bus::match::match> ntpServerMatch;
+    std::unique_ptr<sdbusplus::bus::match::match> activeStateMatch;
+
+    int handleNCSITimeout();
+
+    std::filesystem::path ncsiTimeoutPath;
+    std::filesystem::path ncsiWatchDriver;
+    std::string ncsiWatchDeviceName;
+
+    friend struct NCSITimeoutWatch;
 };
 
 } // namespace network
