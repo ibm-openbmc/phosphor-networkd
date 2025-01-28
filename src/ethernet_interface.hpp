@@ -122,6 +122,10 @@ class EthernetInterface : public Ifaces
      */
     void loadNameServers(const config::Parser& config);
 
+    /** @brief Function used to delete IPv4 static addresses
+     */
+    void deleteStaticIPv4Addresses();
+
     /** @brief Function used to load the static routes.
      */
     void loadStaticGateways(const config::Parser& config);
@@ -246,6 +250,9 @@ class EthernetInterface : public Ifaces
      *  @param[in] value - lldp value of the interface.
      */
     bool emitLLDP(bool value) override;
+
+    bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
+    void disableDHCP(IP::Protocol protocol);
 
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
