@@ -1476,8 +1476,6 @@ void EthernetInterface::watchTimeSyncActiveState()
                     std::string activeState = std::get<std::string>(it->second);
                     if (activeState == "active" || activeState == "inactive")
                     {
-                        lg2::info("systemd-timesyncd switched to : {SYD_STATE}",
-                                  "SYD_STATE", activeState);
                         config::Parser config(config::pathForIntfConf(
                             manager.get().getConfDir(), interfaceName()));
                         loadNTPServers(config);
