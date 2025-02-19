@@ -515,13 +515,6 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
             Argument::ARGUMENT_VALUE(stdplus::toStr(prefixLength).c_str()));
     }
 
-    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
-    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
-    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
-    {
-        disableDHCP(protType);
-    }
-
     auto it = addrs.find(*ifaddr);
     if (it == addrs.end())
     {
@@ -541,6 +534,13 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
 
     writeConfigurationFile();
     manager.get().reloadConfigs();
+
+    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
+    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
+    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
+    {
+        disableDHCP(protType);
+    }
 
     return it->second->getObjPath();
 }
