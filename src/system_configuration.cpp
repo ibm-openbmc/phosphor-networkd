@@ -13,6 +13,11 @@ namespace network
 static constexpr char HOSTNAMED_SVC[] = "org.freedesktop.hostname1";
 static constexpr char HOSTNAMED_OBJ[] = "/org/freedesktop/hostname1";
 static constexpr char HOSTNAMED_INTF[] = "org.freedesktop.hostname1";
+constexpr auto systemdBusname = "org.freedesktop.systemd1";
+constexpr auto systemdObjPath = "/org/freedesktop/systemd1";
+constexpr auto systemdInterface = "org.freedesktop.systemd1.Manager";
+constexpr auto lldpFilePath = "/etc/lldpd.conf";
+constexpr auto lldpService = "lldpd.service";
 
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
@@ -81,7 +86,20 @@ std::string SystemConfiguration::hostName(std::string name)
             HOSTNAMED_SVC, HOSTNAMED_OBJ, HOSTNAMED_INTF, "SetStaticHostname");
         method.append(name, /*interactive=*/false);
         method.call();
-        return SystemConfigIntf::hostName(std::move(name));
+
+        try
+        {
+            auto method = bus.get().new_method_call(
+                systemdBusname, systemdObjPath, systemdInterface, "RestartUnit");
+            method.append(lldpService, "replace");
+            bus.get().call_noreply(method);
+        }
+        catch (const sdbusplus::exception_t& ex)
+        {
+            lg2::error("Failed to restart service {SERVICE}: {ERR}", "SERVICE",
+                lldpService, "ERR", ex);
+        }
+	return SystemConfigIntf::hostName(std::move(name));
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
