@@ -534,6 +534,7 @@ void Manager::writeLLDPDConfigurationFile()
     std::ofstream lldpdConfig(lldpFilePath);
 
     lldpdConfig << "configure system description BMC" << std::endl;
+    lldpdConfig << "configure system ip management pattern eth*" << std::endl;
     for (const auto& intf : interfaces)
     {
         bool emitlldp = intf.second->emitLLDP();
