@@ -681,23 +681,47 @@ bool HypEthInterface::ipv6AcceptRA(bool value)
     return value;
 }
 
-std::string HypEthInterface::defaultGateway6(std::string gateway)
+template <typename Addr>
+static bool validIntfIP(Addr a) noexcept
 {
+    return a.isUnicast() && !a.isLoopback();
+}
+
+template <typename Addr>
+static void normalizeGateway(std::string& gw)
+{
+    if (gw.empty())
+    {
+        return;
+    }
     try
     {
-        if (!gateway.empty())
+        auto ip = stdplus::fromStr<Addr>(gw);
+        if (ip == Addr{})
         {
-            validateGateway<stdplus::In6Addr>(gateway);
+            return;
         }
+        if (!validIntfIP(ip))
+        {
+            throw std::invalid_argument("Invalid unicast");
+        }
+        gw = stdplus::toStr(ip);
     }
     catch (const std::exception& e)
     {
-        lg2::error("Invalid IPv6 Gateway: {GATEWAY}, Error: {ERROR}", "GATEWAY",
-                   gateway, "ERROR", e.what());
+        lg2::error("Invalid GW `{NET_GW}`: {ERROR}", "NET_GW", gw, "ERROR", e);
         elog<InvalidArgument>(Argument::ARGUMENT_NAME("GATEWAY"),
-                              Argument::ARGUMENT_VALUE(gateway.c_str()));
+                              Argument::ARGUMENT_VALUE(gw.c_str()));
     }
+}
 
+std::string HypEthInterface::defaultGateway6(std::string gateway)
+{
+    normalizeGateway<stdplus::In6Addr>(gateway);
+    if (gateway.empty())
+    {
+        gateway = "::";
+    }
     if (HypEthernetIntf::defaultGateway6() == gateway)
     {
         return gateway;
@@ -712,7 +736,7 @@ std::string HypEthInterface::defaultGateway6(std::string gateway)
             {
                 HypEthernetIntf::defaultGateway6(gateway);
                 // Update ipv6 gateway as well
-                ipObj->gateway(gateway);
+                ipObj->HypIP::gateway(gateway);
             }
             else
             {
