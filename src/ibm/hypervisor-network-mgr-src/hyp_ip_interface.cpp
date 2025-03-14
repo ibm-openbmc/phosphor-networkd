@@ -567,6 +567,8 @@ void HypIPAddress::delete_()
     {
         resetBaseBiosTableAttrs("IPv6");
     }
+    // Set enabled property to false
+    HypIPAddress::enabled(false);
 }
 
 } // namespace network
