@@ -1,14 +1,19 @@
 #include "ncsi_util.hpp"
 
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/mctp.h>
 #include <linux/ncsi.h>
 #include <netlink/genl/ctrl.h>
 #include <netlink/genl/genl.h>
 #include <netlink/netlink.h>
+#include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
 
 #include <optional>
 #include <span>
+#include <system_error>
 #include <vector>
 
 namespace phosphor
@@ -17,6 +22,8 @@ namespace network
 {
 namespace ncsi
 {
+
+static const char* mctp_iid_path = "/run/ncsi-mctp-iids";
 
 NCSICommand::NCSICommand(uint8_t opcode, uint8_t package,
                          std::optional<uint8_t> channel,
@@ -561,6 +568,267 @@ int NCSIResponse::parseFullPayload()
     this->reason = ntohs(respPayload->reason);
 
     return 0;
+}
+
+static const uint8_t MCTP_TYPE_NCSI = 2;
+
+struct NCSIResponsePayload
+{
+    uint16_t response;
+    uint16_t reason;
+};
+
+std::optional<NCSIResponse> MCTPInterface::sendCommand(NCSICommand& cmd)
+{
+    static constexpr uint8_t mcid = 0; /* no need to distinguish controllers */
+    static constexpr size_t maxRespLen = 16384;
+    size_t payloadLen, padLen;
+    ssize_t wlen, rlen;
+
+    payloadLen = cmd.payload.size();
+
+    auto tmp = allocateIID();
+    if (!tmp.has_value())
+    {
+        return {};
+    }
+    uint8_t iid = *tmp;
+
+    internal::NCSIPacketHeader cmdHeader{};
+    cmdHeader.MCID = mcid;
+    cmdHeader.revision = 1;
+    cmdHeader.id = iid;
+    cmdHeader.type = cmd.opcode;
+    cmdHeader.channel = (uint8_t)(cmd.package << 5 | cmd.getChannel());
+    cmdHeader.length = htons(payloadLen);
+
+    struct iovec iov[3];
+    iov[0].iov_base = &cmdHeader;
+    iov[0].iov_len = sizeof(cmdHeader);
+    iov[1].iov_base = cmd.payload.data();
+    iov[1].iov_len = payloadLen;
+
+    /* the checksum must appear on a 4-byte boundary */
+    padLen = 4 - (payloadLen & 0x3);
+    if (padLen == 4)
+    {
+        padLen = 0;
+    }
+    uint8_t crc32buf[8] = {};
+    /* todo: set csum; zeros currently indicate no checksum present */
+    uint32_t crc32 = 0;
+
+    memcpy(crc32buf + padLen, &crc32, sizeof(crc32));
+    padLen += sizeof(crc32);
+
+    iov[2].iov_base = crc32buf;
+    iov[2].iov_len = padLen;
+
+    struct sockaddr_mctp addr = {};
+    addr.smctp_family = AF_MCTP;
+    addr.smctp_network = net;
+    addr.smctp_addr.s_addr = eid;
+    addr.smctp_tag = MCTP_TAG_OWNER;
+    addr.smctp_type = MCTP_TYPE_NCSI;
+
+    struct msghdr msg = {};
+    msg.msg_name = &addr;
+    msg.msg_namelen = sizeof(addr);
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 3;
+
+    wlen = sendmsg(sd, &msg, 0);
+    if (wlen < 0)
+    {
+        lg2::error("Failed to send MCTP message, ERRNO: {ERRNO}", "ERRNO",
+                   -wlen);
+        return {};
+    }
+    else if ((size_t)wlen != sizeof(cmdHeader) + payloadLen + padLen)
+    {
+        lg2::error("Short write sending MCTP message, LEN: {LEN}", "LEN", wlen);
+        return {};
+    }
+
+    internal::NCSIPacketHeader* respHeader;
+    NCSIResponsePayload* respPayload;
+    NCSIResponse resp{};
+
+    resp.full_payload.resize(maxRespLen);
+    iov[0].iov_len = resp.full_payload.size();
+    iov[0].iov_base = resp.full_payload.data();
+
+    msg.msg_name = &addr;
+    msg.msg_namelen = sizeof(addr);
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 1;
+
+    /* we have set SO_RCVTIMEO, so this won't block forever... */
+    rlen = recvmsg(sd, &msg, MSG_TRUNC);
+    if (rlen < 0)
+    {
+        lg2::error("Failed to read MCTP response, ERRNO: {ERRNO}", "ERRNO",
+                   -rlen);
+        return {};
+    }
+    else if ((size_t)rlen < sizeof(*respHeader) + sizeof(*respPayload))
+    {
+        lg2::error("Short read receiving MCTP message, LEN: {LEN}", "LEN",
+                   rlen);
+        return {};
+    }
+    else if ((size_t)rlen > maxRespLen)
+    {
+        lg2::error("MCTP response is too large, LEN: {LEN}", "LEN", rlen);
+        return {};
+    }
+
+    resp.full_payload.resize(rlen);
+
+    respHeader =
+        reinterpret_cast<decltype(respHeader)>(resp.full_payload.data());
+
+    /* header validation */
+    if (respHeader->MCID != mcid)
+    {
+        lg2::error("Invalid MCID {MCID} in response", "MCID", lg2::hex,
+                   respHeader->MCID);
+        return {};
+    }
+
+    if (respHeader->id != iid)
+    {
+        lg2::error("Invalid IID {IID} in response", "IID", lg2::hex,
+                   respHeader->id);
+        return {};
+    }
+
+    if (respHeader->type != (cmd.opcode | 0x80))
+    {
+        lg2::error("Invalid opcode {OPCODE} in response", "OPCODE", lg2::hex,
+                   respHeader->type);
+        return {};
+    }
+
+    int rc = resp.parseFullPayload();
+    if (rc)
+    {
+        return {};
+    }
+
+    return resp;
+}
+
+std::string MCTPInterface::toString()
+{
+    return std::to_string(net) + "," + std::to_string(eid);
+}
+
+MCTPInterface::MCTPInterface(int net, uint8_t eid) : net(net), eid(eid)
+{
+    static const struct timeval receiveTimeout = {
+        .tv_sec = 1,
+        .tv_usec = 0,
+    };
+
+    int _sd = socket(AF_MCTP, SOCK_DGRAM, 0);
+    if (_sd < 0)
+    {
+        throw std::system_error(errno, std::system_category(),
+                                "Can't create MCTP socket");
+    }
+
+    int rc = setsockopt(_sd, SOL_SOCKET, SO_RCVTIMEO, &receiveTimeout,
+                        sizeof(receiveTimeout));
+    if (rc != 0)
+    {
+        throw std::system_error(errno, std::system_category(),
+                                "Can't set socket receive timemout");
+    }
+
+    sd = _sd;
+}
+
+MCTPInterface::~MCTPInterface()
+{
+    close(sd);
+}
+
+/* Small fd wrapper to provide RAII semantics, closing the IID file descriptor
+ * when we go out of scope.
+ */
+struct IidFd
+{
+    int fd;
+    IidFd(int _fd) : fd(_fd) {};
+    ~IidFd()
+    {
+        close(fd);
+    };
+};
+
+std::optional<uint8_t> MCTPInterface::allocateIID()
+{
+    int fd = open(mctp_iid_path, O_RDWR | O_CREAT, 0600);
+    if (fd < 0)
+    {
+        lg2::warning("Error opening IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
+        return {};
+    }
+
+    IidFd iidFd(fd);
+
+    /* lock while we read/modity/write; the lock will be short-lived, so
+     * we keep it simple and lock the entire file range
+     */
+    struct flock flock = {
+        .l_type = F_WRLCK,
+        .l_whence = SEEK_SET,
+        .l_start = 0,
+        .l_len = 0,
+        .l_pid = 0,
+    };
+
+    int rc = fcntl(iidFd.fd, F_OFD_SETLKW, &flock);
+    if (rc)
+    {
+        lg2::warning("Error locking IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
+        return {};
+    }
+
+    /* An EOF (rc == 0) would indicate that we don't yet have an entry for that
+     * eid, which we handle as iid = 0.
+     */
+    uint8_t iid = 0;
+    rc = pread(iidFd.fd, &iid, sizeof(iid), eid);
+    if (rc < 0)
+    {
+        lg2::warning("Error reading IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
+        return {};
+    }
+
+    /* DSP0222 defines valid IIDs in the range [1, 0xff], so manually wrap */
+    if (iid == 0xff)
+    {
+        iid = 1;
+    }
+    else
+    {
+        iid++;
+    }
+
+    rc = pwrite(iidFd.fd, &iid, sizeof(iid), eid);
+    if (rc != sizeof(iid))
+    {
+        lg2::warning("Error writing IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
+        return {};
+    }
+
+    return iid;
 }
 
 } // namespace ncsi

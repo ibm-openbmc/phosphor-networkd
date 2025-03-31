@@ -153,6 +153,22 @@ struct NetlinkInterface : Interface
     int ifindex;
 };
 
+struct MCTPInterface : Interface
+{
+    std::optional<NCSIResponse> sendCommand(NCSICommand& cmd);
+    std::string toString();
+
+    MCTPInterface(int net, uint8_t eid);
+    ~MCTPInterface();
+
+  private:
+    int sd;
+    int net;
+    uint8_t eid;
+
+    std::optional<uint8_t> allocateIID();
+};
+
 } // namespace ncsi
 } // namespace network
 } // namespace phosphor
