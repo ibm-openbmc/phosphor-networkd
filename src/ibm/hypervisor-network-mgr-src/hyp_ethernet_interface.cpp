@@ -1149,6 +1149,7 @@ HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)
                 else
                 {
                     method = "IPv6Static";
+                    (itr->second)->origin(HypIP::AddressOrigin::Static);
                     // Reset IPv6 to the defaults only when dhcpv6 is disabled;
                     // if old6/oldra is false (which means static), then
                     // reset shouldn't happen in order to restore the static
