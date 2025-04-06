@@ -15,7 +15,7 @@ namespace network
 class TestHypNetworkManager : public testing::Test
 {
   public:
-    sdbusplus::bus_t bus;
+    stdplus::Pinned<sdbusplus::bus_t> bus;
     HypNetworkMgr manager;
     TestHypNetworkManager() :
         bus(sdbusplus::bus::new_default()),
@@ -25,8 +25,8 @@ class TestHypNetworkManager : public testing::Test
         // method call to set default values in the local copy
         // of the bios attributes should be called for ipv6 as well
 
-        manager.setDefaultBIOSTableAttrsOnIntf("if0");
-        manager.setDefaultBIOSTableAttrsOnIntf("if1");
+        manager.setDefaultBIOSTableAttrsOnIntf("if0", "ipv4");
+        manager.setDefaultBIOSTableAttrsOnIntf("if1", "ipv4");
         manager.setDefaultHostnameInBIOSTableAttrs();
     }
 
