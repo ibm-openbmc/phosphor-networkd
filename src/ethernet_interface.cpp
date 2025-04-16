@@ -471,6 +471,13 @@ void EthernetInterface::disableDHCP(IP::Protocol protocol)
 ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
                                  uint8_t prefixLength, std::string)
 {
+    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
+    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
+    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
+    {
+        EthernetInterfaceIntf::dhcp4(false, true);
+    }
+
     std::optional<stdplus::InAnyAddr> addr;
     try
     {
@@ -534,13 +541,6 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
 
     writeConfigurationFile();
     manager.get().reloadConfigs();
-
-    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
-    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
-    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
-    {
-        disableDHCP(protType);
-    }
 
     return it->second->getObjPath();
 }
