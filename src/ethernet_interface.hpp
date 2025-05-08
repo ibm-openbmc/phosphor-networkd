@@ -10,6 +10,8 @@
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <sdeventplus/source/io.hpp>
+#include <stdplus/fd/managed.hpp>
 #include <stdplus/pinned.hpp>
 #include <stdplus/str/maps.hpp>
 #include <stdplus/zstring_view.hpp>
@@ -20,6 +22,7 @@
 #include <xyz/openbmc_project/Network/VLAN/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -279,10 +282,29 @@ class EthernetInterface : public Ifaces
     friend class TestNetworkManager;
 
   private:
+    struct NCSITimeoutWatch
+    {
+        NCSITimeoutWatch(EthernetInterface& intf, int fd);
+
+        void callback(sdeventplus::source::IO&, int, uint32_t);
+
+        EthernetInterface& intf;
+        sdeventplus::source::IO io;
+    };
+    std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
+
     EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                       stdplus::PinnedRef<Manager> manager,
                       const AllIntfInfo& info, std::string&& objPath,
                       const config::Parser& config, bool enabled);
+
+    int handleNCSITimeout();
+
+    std::filesystem::path ncsiTimeoutPath;
+    std::filesystem::path ncsiWatchDriver;
+    std::string ncsiWatchDeviceName;
+
+    friend struct NCSITimeoutWatch;
 };
 
 } // namespace network
