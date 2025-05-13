@@ -114,6 +114,14 @@ void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
         int fd = intf.handleNCSITimeout();
         if (fd >= 0)
         {
+            // NCSI timeout handling was a success, check if IPMI workaround
+            // needed
+            int rc = intf.handleIpmiOnNCSITimeout(intf.interfaceName());
+            if (rc)
+            {
+                log<level::WARNING>("Error restarting IPMI");
+            }
+
             close(io.get_fd());
             io.set_fd(fd);
             return;
@@ -291,6 +299,89 @@ int EthernetInterface::handleNCSITimeout()
     }
 
     return fd;
+}
+
+bool EthernetInterface::isServiceActive(const std::string& serviceName)
+{
+    std::variant<std::string> serviceState;
+    sdbusplus::message::object_path unitPath;
+
+    auto method = bus.get().new_method_call(
+        "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "GetUnit");
+
+    method.append(serviceName);
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(unitPath);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in GetUnit call: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    method = bus.get().new_method_call(
+        "org.freedesktop.systemd1",
+        static_cast<const std::string&>(unitPath).c_str(),
+        "org.freedesktop.DBus.Properties", "Get");
+
+    method.append("org.freedesktop.systemd1.Unit", "ActiveState");
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(serviceState);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in ActiveState Get: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    const auto& currentStateStr = std::get<std::string>(serviceState);
+    return currentStateStr == "active" || currentStateStr == "activating";
+}
+
+int EthernetInterface::handleIpmiOnNCSITimeout(const std::string& intfName)
+{
+    // Need to force the network IPMI service to restart after the unbind/bind
+    lg2::info("Handling IPMI On NCSI Timeout on {INTERFACE}", "INTERFACE",
+              intfName);
+
+    // Only run the IPMI workaround if the service is running
+    auto serviceName = std::format("phosphor-ipmi-net@{}.service", intfName);
+    if (isServiceActive(serviceName))
+    {
+        lg2::info("IPMI on {INTERFACE} is active so run the workaround",
+                  "INTERFACE", intfName);
+
+        // The workaround is to restart the service so it connects back up
+        // to the newly bound network interface
+        try
+        {
+            auto method = bus.get().new_method_call(
+                "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                "org.freedesktop.systemd1.Manager", "RestartUnit");
+            method.append(serviceName, "replace");
+            bus.get().call_noreply(method);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            lg2::error("Failed to restart service {SERVICE}: {ERROR}",
+                       "SERVICE", serviceName, "ERROR", e);
+            return -1;
+        }
+    }
+    else
+    {
+        lg2::info("IPMI on {INTERFACE} is not active so no workaround needed",
+                  "INTERFACE", intfName);
+    }
+
+    return 0;
 }
 
 void EthernetInterface::updateInfo(const InterfaceInfo& info, bool skipSignal)
