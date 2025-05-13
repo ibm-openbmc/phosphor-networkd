@@ -315,6 +315,10 @@ class EthernetInterface : public Ifaces
 
     int handleNCSITimeout();
 
+    bool isServiceActive(const std::string& serviceName);
+
+    int handleIpmiOnNCSITimeout(const std::string& intfName);
+
     std::filesystem::path ncsiTimeoutPath;
     std::filesystem::path ncsiWatchDriver;
     std::string ncsiWatchDeviceName;
