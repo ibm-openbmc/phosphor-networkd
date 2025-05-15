@@ -118,10 +118,16 @@ DHCPVal getDHCPValue(const config::Parser& config);
 bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
                  std::string_view key);
 
-/** @brief Set IPv4 address last octet to zero
- *  @param[in] ip - IPv4 address
+/** @brief Generate network route using given gateway and prefix length
+ *  @param[in] gateway - IPv4 address
+ *  @param[in] prefixLength - prefix length of IP address
  */
-std::string setIPv4AddressLastOctetToZero(const std::string& ip);
+std::string generateNetworkRoute(const std::string& gateway, int prefixLength);
+
+/** @brief Generate unique routing table id for given interface
+ *  @param[in] iface - interface name
+ */
+uint32_t generateRouteTableID(const std::string& iface);
 
 namespace internal
 {
