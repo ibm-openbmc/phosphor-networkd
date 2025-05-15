@@ -1187,24 +1187,13 @@ void EthernetInterface::writeConfigurationFile()
                     auto& gateway4route = config.map["Route"].emplace_back();
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
-                    // Creating different routing tables for each ethernet
-                    // interface to solve eth0 and eth1 route entry order issues
-                    // Routing table id of "eth0" interface is 10
-                    // Routing table id of "eth1" interface is 20
-                    std::string routingTableId;
-                    if (interfaceName() == "eth0")
-                    {
-                        routingTableId = "10";
-                    }
-                    else if (interfaceName() == "eth1")
-                    {
-                        routingTableId = "20";
-                    }
+
+                    std::string routingTableId =
+                        std::to_string(generateRouteTableID(interfaceName()));
                     gateway4route["Table"].emplace_back(routingTableId);
                     std::string routeAddressPrefix =
-                        setIPv4AddressLastOctetToZero(gateway4);
-                    routeAddressPrefix =
-                        routeAddressPrefix + "/" + std::to_string(prefixLength);
+                        generateNetworkRoute(gateway4, prefixLength);
+
                     auto& routingPolicyTo =
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingPolicyTo["Table"].emplace_back(routingTableId);
@@ -1213,6 +1202,12 @@ void EthernetInterface::writeConfigurationFile()
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingPolicyFrom["Table"].emplace_back(routingTableId);
                     routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
+                    auto& routingPolicyDestination =
+                        config.map["Route"].emplace_back();
+                    routingPolicyDestination["Table"].emplace_back(
+                        routingTableId);
+                    routingPolicyDestination["Destination"].emplace_back(
+                        routeAddressPrefix);
                 }
             }
 

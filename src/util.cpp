@@ -5,6 +5,7 @@
 #include "config_parser.hpp"
 #include "types.hpp"
 
+#include <arpa/inet.h>
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <sys/wait.h>
@@ -245,28 +246,35 @@ bool isUnicast(const ether_addr& mac)
 
 } // namespace mac_address
 
-std::string setIPv4AddressLastOctetToZero(const std::string& ip)
+uint32_t generateRouteTableID(const std::string& iface)
 {
-    std::vector<std::string> octets;
-    std::string octet;
-    std::stringstream ss(ip);
+    size_t hash = std::hash<std::string>{}(iface);
+    uint32_t id = static_cast<uint32_t>(hash & 0xFFFFFFFF);
 
-    // Split the IP address by '.'
-    while (std::getline(ss, octet, '.'))
+    return (id == 0) ? 1 : id;
+}
+
+std::string generateNetworkRoute(const std::string& ip, int prefixLength)
+{
+    in_addr addr{};
+    if ((inet_pton(AF_INET, ip.c_str(), &addr) != 1) || (prefixLength < 0) ||
+        (prefixLength > 32))
     {
-        octets.push_back(octet);
+        return {};
     }
 
-    // Modify the last octet
-    if (octets.size() == 4)
-    {
-        octets[3] = "0";
-    }
+    uint32_t ipInt = ntohl(addr.s_addr);
+    uint32_t mask = (prefixLength == 0) ? 0 : (~0U << (32 - prefixLength));
+    uint32_t networkInt = ipInt & mask;
 
-    std::string modifiedIP =
-        octets[0] + "." + octets[1] + "." + octets[2] + "." + octets[3];
+    in_addr networkAddr{};
+    networkAddr.s_addr = htonl(networkInt);
 
-    return modifiedIP;
+    std::array<char, INET_ADDRSTRLEN> buf{};
+    if (!inet_ntop(AF_INET, &networkAddr, buf.data(), buf.size()))
+        return {};
+
+    return std::string(buf.data()) + "/" + std::to_string(prefixLength);
 }
 
 } // namespace network
