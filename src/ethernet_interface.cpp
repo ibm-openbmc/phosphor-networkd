@@ -898,36 +898,25 @@ void EthernetInterface::loadStaticRoutes(const config::Parser& config)
         IP::Protocol addressType;
         unsigned char buf[sizeof(struct in6_addr)];
         int status6 = inet_pton(AF_INET6, gateways[i].c_str(), buf);
-        if (status6 <= 0)
-        {
-            int status4 = inet_pton(AF_INET, gateways[i].c_str(), buf);
-            if (status4 <= 0)
-            {
-                auto msg1 = fmt::format("Invalid static route \n");
-                log<level::ERR>(msg1.c_str());
-                return;
-            }
-            addr = ToAddr<in_addr>{}(gateways[i]);
-            addressType = IP::Protocol::IPv4;
-        }
-        else if (status6)
+        if (status6)
         {
             addr = ToAddr<in6_addr>{}(gateways[i]);
             addressType = IP::Protocol::IPv6;
+
+            try
+            {
+                ifaddr = {addr, prefix};
+            }
+            catch (const std::exception& e)
+            {
+                auto msg = fmt::format("Invalid static route {}\n", e.what());
+                log<level::ERR>(msg.c_str());
+            }
+            staticRoutes.emplace(gateways[i],
+                                 std::make_unique<StaticRoute>(
+                                     bus, std::string_view(objPath), *this,
+                                     dest, gateways[i], prefix, addressType));
         }
-        try
-        {
-            ifaddr = {addr, prefix};
-        }
-        catch (const std::exception& e)
-        {
-            auto msg = fmt::format("Invalid static route {}\n", e.what());
-            log<level::ERR>(msg.c_str());
-        }
-        staticRoutes.emplace(gateways[i],
-                             std::make_unique<StaticRoute>(
-                                 bus, std::string_view(objPath), *this, dest,
-                                 gateways[i], prefix, addressType));
     }
 }
 
