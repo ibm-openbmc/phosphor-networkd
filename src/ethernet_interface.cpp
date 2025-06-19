@@ -506,57 +506,9 @@ void EthernetInterface::addStaticGateway(const StaticGatewayInfo& info)
     }
 }
 
-bool EthernetInterface::dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol)
-{
-    return ((EthernetInterfaceIntf::dhcpEnabled() ==
-             EthernetInterface::DHCPConf::both) ||
-            ((EthernetInterfaceIntf::dhcpEnabled() ==
-              EthernetInterface::DHCPConf::v6) &&
-             ((family == IP::Protocol::IPv6) || ignoreProtocol)) ||
-            ((EthernetInterfaceIntf::dhcpEnabled() ==
-              EthernetInterface::DHCPConf::v4) &&
-             ((family == IP::Protocol::IPv4) || ignoreProtocol)) ||
-            ((EthernetInterfaceIntf::dhcpEnabled() ==
-              EthernetInterface::DHCPConf::v4v6stateless) &&
-             ((family == IP::Protocol::IPv4) || ignoreProtocol)));
-}
-
-void EthernetInterface::disableDHCP(IP::Protocol protocol)
-{
-    DHCPConf dhcpState = EthernetInterfaceIntf::dhcpEnabled();
-    if (dhcpState == EthernetInterface::DHCPConf::both)
-    {
-        if (protocol == IP::Protocol::IPv4)
-        {
-            dhcpEnabled(EthernetInterface::DHCPConf::v6);
-        }
-        else if (protocol == IP::Protocol::IPv6)
-        {
-            dhcpEnabled(EthernetInterface::DHCPConf::v4);
-        }
-    }
-    else if ((dhcpState == EthernetInterface::DHCPConf::v4) &&
-             (protocol == IP::Protocol::IPv4))
-    {
-        dhcpEnabled(EthernetInterface::DHCPConf::none);
-    }
-    else if ((dhcpState == EthernetInterface::DHCPConf::v6) &&
-             (protocol == IP::Protocol::IPv6))
-    {
-        dhcpEnabled(EthernetInterface::DHCPConf::none);
-    }
-}
-
 ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
                                  uint8_t prefixLength, std::string)
 {
-    // TODO This is a workaround to avoid IPv4 static and DHCP IP address
-    // coexistence Disable IPv4 DHCP while configuring IPv4 static address
-    if ((protType == IP::Protocol::IPv4) && dhcpIsEnabled(protType, false))
-    {
-        EthernetInterfaceIntf::dhcp4(false, true);
-    }
-
     std::optional<stdplus::InAnyAddr> addr;
     try
     {
@@ -754,34 +706,8 @@ bool EthernetInterface::dhcp6(bool value)
     return value;
 }
 
-void EthernetInterface::deleteStaticIPv4Addresses()
-{
-    std::unique_ptr<IPAddress> ptr;
-    for (auto it = addrs.begin(); it != addrs.end();)
-    {
-        if ((it->second->origin() == IP::AddressOrigin::Static) &&
-            (it->second->type() == IP::Protocol::IPv4))
-        {
-            ptr = std::move(it->second);
-            it = addrs.erase(it);
-            writeConfigurationFile();
-            manager.get().reloadConfigs();
-        }
-        else
-        {
-            it++;
-        }
-    }
-}
-
 EthernetInterface::DHCPConf EthernetInterface::dhcpEnabled(DHCPConf value)
 {
-    if ((value == DHCPConf::v4) || (value == DHCPConf::both))
-    {
-        // Delete all IPv4 static addresses while enabling DHCP
-        deleteStaticIPv4Addresses();
-    }
-
     auto old4 = EthernetInterfaceIntf::dhcp4();
     auto new4 = EthernetInterfaceIntf::dhcp4(
         value == DHCPConf::v4 || value == DHCPConf::v4v6stateless ||

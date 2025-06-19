@@ -122,10 +122,6 @@ class EthernetInterface : public Ifaces
      */
     void loadNameServers(const config::Parser& config);
 
-    /** @brief Function used to delete IPv4 static addresses
-     */
-    void deleteStaticIPv4Addresses();
-
     /** @brief Function to create ipAddress dbus object.
      *  @param[in] addressType - Type of ip address.
      *  @param[in] ipAddress- IP address.
@@ -238,9 +234,6 @@ class EthernetInterface : public Ifaces
      *  @param[in] value - lldp value of the interface.
      */
     bool emitLLDP(bool value) override;
-
-    bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
-    void disableDHCP(IP::Protocol protocol);
 
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
