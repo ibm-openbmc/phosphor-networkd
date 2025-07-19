@@ -1230,12 +1230,6 @@ void EthernetInterface::writeConfigurationFile()
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingPolicyFrom["Table"].emplace_back(routingTableId);
                     routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
-                    auto& routingPolicyDestination =
-                        config.map["Route"].emplace_back();
-                    routingPolicyDestination["Table"].emplace_back(
-                        routingTableId);
-                    routingPolicyDestination["Destination"].emplace_back(
-                        routeAddressPrefix);
                 }
             }
 
