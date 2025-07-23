@@ -345,7 +345,7 @@ int EthernetInterface::handleIpmiOnNCSITimeout(const std::string& intfName)
     log<level::INFO>(msg.c_str());
 
     // Only run the IPMI workaround if the service is running
-    auto serviceName = std::format("phosphor-ipmi-net@{}.service", intfName);
+    auto serviceName = fmt::format("phosphor-ipmi-net@{}.service", intfName);
     if (isServiceActive(serviceName))
     {
         msg = fmt::format("IPMI on {} is active so run the workaround\n",
