@@ -4,6 +4,7 @@
 #include <stdplus/raw.hpp>
 #include <stdplus/zstring_view.hpp>
 
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -72,6 +73,21 @@ DHCPVal getDHCPValue(const config::Parser& config);
 bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
                  std::string_view key);
 
+/** @brief Read LLDP configuration from lldpd conf file
+ */
+std::map<std::string, bool> parseLLDPConf();
+
+/** @brief Generate network route using given gateway and prefix length
+ *  @param[in] gateway - IPv4 address
+ *  @param[in] prefixLength - prefix length of IP address
+ */
+std::string generateNetworkRoute(const std::string& gateway, int prefixLength);
+
+/** @brief Generate unique routing table id for given interface
+ *  @param[in] iface - interface name
+ */
+uint32_t generateRouteTableID(const std::string& iface);
+
 namespace internal
 {
 
@@ -85,8 +101,8 @@ void executeCommandinChildProcess(stdplus::zstring_view path, char** args);
 std::string_view getIgnoredInterfacesEnv();
 
 /** @brief Parse the comma separated interface names */
-std::unordered_set<std::string_view>
-    parseInterfaces(std::string_view interfaces);
+std::unordered_set<std::string_view> parseInterfaces(
+    std::string_view interfaces);
 
 /** @brief Get the ignored interfaces */
 const std::unordered_set<std::string_view>& getIgnoredInterfaces();

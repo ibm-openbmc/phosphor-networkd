@@ -22,6 +22,7 @@
 
 #include <filesystem>
 #include <format>
+#include <fstream>
 
 namespace phosphor
 {
@@ -32,6 +33,12 @@ using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
 using Argument = xyz::openbmc_project::Common::InvalidArgument;
 using std::literals::string_view_literals::operator""sv;
+
+constexpr auto systemdBusname = "org.freedesktop.systemd1";
+constexpr auto systemdObjPath = "/org/freedesktop/systemd1";
+constexpr auto systemdInterface = "org.freedesktop.systemd1.Manager";
+constexpr auto lldpFilePath = "/etc/lldpd.conf";
+constexpr auto lldpService = "lldpd.service";
 
 static constexpr const char enabledMatch[] =
     "type='signal',sender='org.freedesktop.network1',path_namespace='/org/"
@@ -197,6 +204,8 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
         bus, *this, info, objPath.str, config, enabled);
     intf->loadNameServers(config);
     intf->loadNTPServers(config);
+    watchNTPServers(intf.get());
+    watchTimeSyncActiveState(intf.get());
     auto ptr = intf.get();
     interfaces.insert_or_assign(*info.intf.name, std::move(intf));
     interfacesByIdx.insert_or_assign(info.intf.idx, ptr);
@@ -513,6 +522,114 @@ void Manager::handleAdminState(std::string_view state, unsigned ifidx)
             createInterface(it->second, managed);
         }
     }
+}
+
+void Manager::writeLLDPDConfigurationFile()
+{
+    std::ofstream lldpdConfig(lldpFilePath);
+
+    lldpdConfig << "configure system description BMC" << std::endl;
+    lldpdConfig << "configure system ip management pattern eth*" << std::endl;
+    for (const auto& intf : interfaces)
+    {
+        bool emitlldp = intf.second->emitLLDP();
+        if (emitlldp)
+        {
+            lldpdConfig << "configure ports " << intf.second->interfaceName()
+                        << " lldp status tx-only" << std::endl;
+        }
+        else
+        {
+            lldpdConfig << "configure ports " << intf.second->interfaceName()
+                        << " lldp status disabled" << std::endl;
+        }
+    }
+
+    lldpdConfig.close();
+}
+
+void Manager::reloadLLDPService()
+{
+    try
+    {
+        auto method = bus.get().new_method_call(
+            systemdBusname, systemdObjPath, systemdInterface, "RestartUnit");
+        method.append(lldpService, "replace");
+        bus.get().call_noreply(method);
+    }
+    catch (const sdbusplus::exception_t& ex)
+    {
+        lg2::error("Failed to restart service {SERVICE}: {ERR}", "SERVICE",
+                   lldpService, "ERR", ex);
+    }
+}
+
+void Manager::watchNTPServers(EthernetInterface* intf)
+{
+    ntpServerMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/timesync1',"
+        "arg0='org.freedesktop.timesync1.Manager'",
+        [this, intf](sdbusplus::message::message& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::vector<std::string>>>
+                changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.timesync1.Manager")
+            {
+                auto it = changedProperties.find("LinkNTPServers");
+                if (it != changedProperties.end())
+                {
+                    lg2::info("NTP server ip updated in timesyncd");
+                    config::Parser config(config::pathForIntfConf(
+                        getConfDir(), intf->interfaceName()));
+                    intf->loadNTPServers(config);
+                }
+            }
+        });
+}
+
+void Manager::watchTimeSyncActiveState(EthernetInterface* intf)
+{
+    activeStateMatch = std::make_unique<sdbusplus::bus::match::match>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/systemd1/unit/systemd_2dtimesyncd_2eservice',"
+        "arg0='org.freedesktop.systemd1.Unit'",
+        [this, intf](sdbusplus::message::message& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::string>> changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.systemd1.Unit")
+            {
+                auto it = changedProperties.find("ActiveState");
+                if (it != changedProperties.end())
+                {
+                    std::string activeState = std::get<std::string>(it->second);
+                    if (activeState == "active" || activeState == "inactive")
+                    {
+                        config::Parser config(config::pathForIntfConf(
+                            getConfDir(), intf->interfaceName()));
+                        intf->loadNTPServers(config);
+                    }
+                }
+            }
+        });
 }
 
 } // namespace network

@@ -10,7 +10,6 @@ default_busname = 'xyz.openbmc_project.Network'
 
 conf_data = configuration_data()
 conf_data.set_quoted('DEFAULT_BUSNAME', default_busname)
-conf_data.set('HAVE_UBOOT_ENV', get_option('uboot-env'))
 conf_data.set(
     'LINK_LOCAL_AUTOCONFIGURATION',
     get_option('default-link-local-autoconf'),
@@ -71,6 +70,14 @@ subdir('src')
 configure_file(
     input: '60-phosphor-networkd-default.network.in',
     output: '60-phosphor-networkd-default.network',
+    configuration: conf_data,
+    install: true,
+    install_dir: dependency('systemd').get_variable('systemdutildir') / 'network',
+)
+
+configure_file(
+    input: '60-phosphor-networkd-eth1-default.network.in',
+    output: '60-phosphor-networkd-eth1-default.network',
     configuration: conf_data,
     install: true,
     install_dir: dependency('systemd').get_variable('systemdutildir') / 'network',

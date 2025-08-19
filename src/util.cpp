@@ -5,6 +5,7 @@
 #include "config_parser.hpp"
 #include "types.hpp"
 
+#include <arpa/inet.h>
 #include <sys/wait.h>
 
 #include <phosphor-logging/elog-errors.hpp>
@@ -15,6 +16,7 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <cctype>
+#include <fstream>
 #include <string>
 #include <string_view>
 
@@ -26,6 +28,7 @@ namespace network
 using std::literals::string_view_literals::operator""sv;
 using namespace phosphor::logging;
 using namespace sdbusplus::xyz::openbmc_project::Common::Error;
+static constexpr std::string_view lldpdConfigFilePath = "/etc/lldpd.conf";
 
 namespace internal
 {
@@ -86,8 +89,8 @@ std::string_view getIgnoredInterfacesEnv()
 }
 
 /** @brief Parse the comma separated interface names */
-std::unordered_set<std::string_view>
-    parseInterfaces(std::string_view interfaces)
+std::unordered_set<std::string_view> parseInterfaces(
+    std::string_view interfaces)
 {
     std::unordered_set<std::string_view> result;
     while (true)
@@ -224,6 +227,74 @@ bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
 
     return systemdParseLast(config, type, key, config::parseBool)
         .value_or(true);
+}
+
+std::map<std::string, bool> parseLLDPConf()
+{
+    std::ifstream lldpdConfig(lldpdConfigFilePath.data());
+    std::map<std::string, bool> portStatus;
+
+    if (!lldpdConfig.is_open())
+    {
+        return portStatus;
+    }
+
+    std::string line;
+    while (std::getline(lldpdConfig, line))
+    {
+        std::string configurePortsStr = "configure ports ";
+        std::string lldpStatusStr = "lldp status ";
+        size_t portStart = line.find(configurePortsStr);
+        if (portStart != std::string::npos)
+        {
+            portStart += configurePortsStr.size();
+            size_t portEnd = line.find(' ', portStart);
+            if (portEnd == std::string::npos)
+            {
+                portEnd = line.length();
+            }
+            std::string portName = line.substr(portStart, portEnd - portStart);
+            size_t pos = line.find(lldpStatusStr);
+            if (pos != std::string::npos)
+            {
+                std::string statusStr = line.substr(pos + lldpStatusStr.size());
+                portStatus[portName] = (statusStr == "disabled") ? false : true;
+            }
+        }
+    }
+    lldpdConfig.close();
+    return portStatus;
+}
+
+uint32_t generateRouteTableID(const std::string& iface)
+{
+    size_t hash = std::hash<std::string>{}(iface);
+    uint32_t id = static_cast<uint32_t>(hash & 0xFFFFFFFF);
+
+    return (id == 0) ? 1 : id;
+}
+
+std::string generateNetworkRoute(const std::string& ip, int prefixLength)
+{
+    in_addr addr{};
+    if ((inet_pton(AF_INET, ip.c_str(), &addr) != 1) || (prefixLength < 0) ||
+        (prefixLength > 32))
+    {
+        return {};
+    }
+
+    uint32_t ipInt = ntohl(addr.s_addr);
+    uint32_t mask = (prefixLength == 0) ? 0 : (~0U << (32 - prefixLength));
+    uint32_t networkInt = ipInt & mask;
+
+    in_addr networkAddr{};
+    networkAddr.s_addr = htonl(networkInt);
+
+    std::array<char, INET_ADDRSTRLEN> buf{};
+    if (!inet_ntop(AF_INET, &networkAddr, buf.data(), buf.size()))
+        return {};
+
+    return std::string(buf.data()) + "/" + std::to_string(prefixLength);
 }
 
 } // namespace network

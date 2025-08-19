@@ -76,12 +76,23 @@ void HypNetworkMgr::setBIOSTableAttr(
     }
 }
 
-void HypNetworkMgr::setDefaultBIOSTableAttrsOnIntf(const std::string& intf)
+void HypNetworkMgr::setDefaultBIOSTableAttrsOnIntf(const std::string& intf,
+                                                   const std::string& protocol)
 {
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_ipaddr", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_gateway", "0.0.0.0");
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_prefix_length", 0);
-    biosTableAttrs.emplace("vmi_" + intf + "_ipv4_method", "IPv4Static");
+    if (protocol == "ipv4")
+    {
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_ipaddr", "0.0.0.0");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_gateway", "0.0.0.0");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_prefix_length", 0);
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv4_method", "IPv4Static");
+    }
+    else if (protocol == "ipv6")
+    {
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_ipaddr", "::");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_gateway", "::");
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_prefix_length", 128);
+        biosTableAttrs.emplace("vmi_" + intf + "_ipv6_method", "IPv6Static");
+    }
 }
 
 void HypNetworkMgr::setDefaultHostnameInBIOSTableAttrs()
@@ -103,13 +114,12 @@ void HypNetworkMgr::setBIOSTableAttrs()
         std::vector<std::string> interfaces;
         interfaces.emplace_back(biosMgrIntf);
         auto depth = 0;
-
-        auto mapperCall =
-            bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
+        auto mapperCall = bus.get().new_method_call(mapperBus, mapperObj,
+                                                    mapperIntf, "GetSubTree");
 
         mapperCall.append(biosMgrObj, depth, interfaces);
 
-        auto mapperReply = bus.call(mapperCall);
+        auto mapperReply = mapperCall.call();
         if (mapperReply.is_method_error())
         {
             lg2::error("Error in mapper call");
@@ -214,6 +224,11 @@ void HypNetworkMgr::setBIOSTableAttrs()
     }
 }
 
+const ethIntfMapType& HypNetworkMgr::getEthIntfList()
+{
+    return interfaces;
+}
+
 void HypNetworkMgr::createIfObjects()
 {
     setBIOSTableAttrs();
@@ -229,19 +244,32 @@ void HypNetworkMgr::createIfObjects()
     // network configurations on the both.
     // create eth0 and eth1 objects
     lg2::info("Creating eth0 and eth1 objects");
-    interfaces.emplace("eth0",
-                       std::make_unique<HypEthInterface>(
-                           bus, (objectPath + "/eth0").c_str(), "eth0", *this));
-    interfaces.emplace("eth1",
-                       std::make_unique<HypEthInterface>(
-                           bus, (objectPath + "/eth1").c_str(), "eth1", *this));
+    interfaces.emplace(
+        "eth0",
+        std::make_unique<HypEthInterface>(
+            bus, sdbusplus::message::object_path(objectPath.str + "/eth0"),
+            "eth0", *this));
+    interfaces.emplace(
+        "eth1",
+        std::make_unique<HypEthInterface>(
+            bus, sdbusplus::message::object_path(objectPath.str + "/eth1"),
+            "eth1", *this));
+
+    // Create ip address objects for each ethernet interface
+    interfaces["eth0"]->createIPAddressObjects();
+    interfaces["eth1"]->createIPAddressObjects();
+
+    // Call watch method to register for properties changed signal
+    // This method can be called only once
+    interfaces["eth0"]->watchBaseBiosTable();
 }
 
 void HypNetworkMgr::createSysConfObj()
 {
     systemConf.reset(nullptr);
-    this->systemConf =
-        std::make_unique<HypSysConfig>(bus, objectPath + "/config", *this);
+    this->systemConf = std::make_unique<HypSysConfig>(
+        bus, sdbusplus::message::object_path(objectPath.str + "/config"),
+        *this);
 }
 
 } // namespace network

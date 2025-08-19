@@ -1,10 +1,10 @@
 [Match]
-Name=eth0
+Name=eth1
 Name=!lo
 Type=ether
 [Network]
 DHCP=true
-LinkLocalAddressing=@LINK_LOCAL_AUTOCONFIGURATION@
+LinkLocalAddressing=ipv6
 IPv6AcceptRA=@ENABLE_IPV6_ACCEPT_RA@
 [DHCP]
 ClientIdentifier=mac

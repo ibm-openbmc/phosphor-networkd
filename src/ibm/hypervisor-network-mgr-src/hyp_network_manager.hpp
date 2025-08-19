@@ -5,12 +5,17 @@
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <stdplus/pinned.hpp>
 #include <stdplus/str/maps.hpp>
+#include <stdplus/zstring_view.hpp>
 
 namespace phosphor
 {
 namespace network
 {
+
+class HypSysConfig;
+class HypEthInterface;
 
 using biosAttrName = std::string;
 using biosAttrType = std::string;
@@ -21,7 +26,7 @@ using biosAttrMenuPath = std::string;
 using biosAttrCurrValue = std::variant<int64_t, std::string>;
 using biosAttrDefaultValue = std::variant<int64_t, std::string>;
 using biosAttrOptions =
-    std::tuple<std::string, std::variant<int64_t, std::string>>;
+    std::tuple<std::string, std::variant<int64_t, std::string>, std::string>;
 
 using biosTableType = std::map<biosAttrName, biosAttrCurrValue>;
 using BiosBaseTableItemType =
@@ -43,7 +48,6 @@ enum BiosBaseTableIndex
     biosBaseOptions
 };
 
-using SystemConfPtr = std::unique_ptr<HypSysConfig>;
 using ethIntfMapType = stdplus::string_umap<std::unique_ptr<HypEthInterface>>;
 
 /** @class Manager
@@ -64,8 +68,9 @@ class HypNetworkMgr
      *  @param[in] bus - Bus to attach to.
      *  @param[in] path - Path to attach at.
      */
-    HypNetworkMgr(sdbusplus::bus_t& bus, const char* path) :
-        bus(bus), objectPath(path) {};
+    HypNetworkMgr(stdplus::PinnedRef<sdbusplus::bus_t> bus,
+                  stdplus::zstring_view path) :
+        bus(bus), objectPath(std::string(path)) {};
 
     /** @brief Get the BaseBiosTable attributes
      *
@@ -92,15 +97,13 @@ class HypNetworkMgr
      *
      * @return ethernet interfaces list
      */
-    inline const auto& getEthIntfList()
-    {
-        return interfaces;
-    }
+    const ethIntfMapType& getEthIntfList();
 
     /** @brief Method to set all the interface 0 attributes
      *         to its default value in biosTableAttrs data member
      */
-    void setDefaultBIOSTableAttrsOnIntf(const std::string& intf);
+    void setDefaultBIOSTableAttrsOnIntf(const std::string& intf,
+                                        const std::string& protocol);
 
     /** @brief Method to set the hostname attribute
      *         to its default value in biosTableAttrs
@@ -121,9 +124,9 @@ class HypNetworkMgr
     /** @brief gets the system conf object.
      *
      */
-    const SystemConfPtr& getSystemConf()
+    inline auto& getSystemConf()
     {
-        return systemConf;
+        return *systemConf;
     }
 
   protected:
@@ -147,13 +150,13 @@ class HypNetworkMgr
     void setBIOSTableAttrs();
 
     /** @brief sdbusplus DBus bus connection. */
-    sdbusplus::bus_t& bus;
+    stdplus::PinnedRef<sdbusplus::bus_t> bus;
 
     /** @brief object path */
-    std::string objectPath;
+    sdbusplus::message::object_path objectPath;
 
     /** @brief pointer to system conf object. */
-    SystemConfPtr systemConf = nullptr;
+    std::unique_ptr<HypSysConfig> systemConf = nullptr;
 
     /** @brief Persistent map of EthernetInterface dbus
      *         objects and their names

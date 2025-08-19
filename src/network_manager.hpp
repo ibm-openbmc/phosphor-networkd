@@ -55,6 +55,10 @@ class Manager : public ManagerIface
      */
     void writeToConfigurationFile();
 
+    /** @brief write the lldp conf file
+     */
+    void writeLLDPDConfigurationFile();
+
     /** @brief Adds a single interface to the interface map */
     void addInterface(const InterfaceInfo& info);
     void removeInterface(const InterfaceInfo& info);
@@ -101,6 +105,10 @@ class Manager : public ManagerIface
     {
         reload.get().schedule();
     }
+
+    /** Reload LLDP configuration
+     */
+    void reloadLLDPService();
 
     /** @brief Persistent map of EthernetInterface dbus objects and their names
      */
@@ -159,6 +167,18 @@ class Manager : public ManagerIface
 
     /** @brief Creates the interface in the maps */
     void createInterface(const AllIntfInfo& info, bool enabled);
+
+  private:
+    /** @brief Function used to watch change in NTP server.
+     */
+    void watchNTPServers(EthernetInterface* intf);
+
+    /** @brief Function to watch status of systemd timesyncd.
+     */
+    void watchTimeSyncActiveState(EthernetInterface* intf);
+
+    std::unique_ptr<sdbusplus::bus::match::match> ntpServerMatch;
+    std::unique_ptr<sdbusplus::bus::match::match> activeStateMatch;
 };
 
 } // namespace network

@@ -23,9 +23,12 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <variant>
 
@@ -52,9 +55,9 @@ constexpr auto TIMESYNCD_SERVICE_PATH = "/org/freedesktop/timesync1";
 constexpr auto METHOD_GET = "Get";
 
 template <typename Func>
-inline decltype(std::declval<Func>()())
-    ignoreError(std::string_view msg, stdplus::zstring_view intf,
-                decltype(std::declval<Func>()()) fallback, Func&& func) noexcept
+inline decltype(std::declval<Func>()()) ignoreError(
+    std::string_view msg, stdplus::zstring_view intf,
+    decltype(std::declval<Func>()()) fallback, Func&& func) noexcept
 {
     try
     {
@@ -81,6 +84,67 @@ static bool validIntfIP(Addr a) noexcept
     return a.isUnicast() && !a.isLoopback();
 }
 
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(EthernetInterface& intf,
+                                                      int fd) :
+    intf(intf),
+    io(sdeventplus::Event::get_default(), fd, EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(io.get_fd(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        auto msg = fmt::format("Failed to read {} ncsi_timeout: {} from {}\n",
+                               intf.interfaceName(), r, io.get_fd());
+        log<level::ERR>(msg.c_str());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        auto msg = fmt::format("{} NCSI timeout, resetting interface\n",
+                               intf.interfaceName());
+        log<level::WARNING>(msg.c_str());
+
+        int fd = intf.handleNCSITimeout();
+        if (fd >= 0)
+        {
+            // NCSI timeout handling was a success, check if IPMI workaround
+            // needed
+            int rc = intf.handleIpmiOnNCSITimeout(intf.interfaceName());
+            if (rc)
+            {
+                log<level::WARNING>("Error restarting IPMI");
+            }
+
+            close(io.get_fd());
+            io.set_fd(fd);
+            return;
+        }
+    }
+    else
+    {
+        auto msg = fmt::format("{} spurious NCSI timeout wake up\n",
+                               intf.interfaceName());
+        log<level::NOTICE>(msg.c_str());
+    }
+
+    // Must seek to zero otherwise the poll returns immediately
+    r = lseek(io.get_fd(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        auto msg = fmt::format("Failed to seek {} ncsi_timeout {}\n",
+                               intf.interfaceName(), r);
+        log<level::ERR>(msg.c_str());
+    }
+}
+
 EthernetInterface::EthernetInterface(
     stdplus::PinnedRef<sdbusplus::bus_t> bus,
     stdplus::PinnedRef<Manager> manager, const AllIntfInfo& info,
@@ -102,7 +166,11 @@ EthernetInterface::EthernetInterface(
     EthernetInterfaceIntf::dhcp6(dhcpVal.v6, true);
     EthernetInterfaceIntf::ipv6AcceptRA(getIPv6AcceptRA(config), true);
     EthernetInterfaceIntf::nicEnabled(enabled, true);
-
+    auto lldpVal = parseLLDPConf();
+    if (!lldpVal.empty())
+    {
+        EthernetInterfaceIntf::emitLLDP(lldpVal[interfaceName()], true);
+    }
     EthernetInterfaceIntf::ntpServers(
         config.map.getValueStrings("Network", "NTP"), true);
 
@@ -140,6 +208,181 @@ EthernetInterface::EthernetInterface(
     {
         addStaticGateway(staticGateway);
     }
+
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        const std::filesystem::path dirPath = d.path();
+        std::filesystem::path ifindex = dirPath / "ifindex";
+        std::ifstream file(ifindex);
+        unsigned int i;
+
+        file >> i;
+        if (!file)
+        {
+            continue;
+        }
+
+        if (i == info.intf.idx)
+        {
+            ncsiTimeoutPath = dirPath / "ncsi_timeout";
+            int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
+            {
+                std::error_code ec;
+                std::filesystem::path devPath = dirPath / "device";
+                std::filesystem::path device =
+                    std::filesystem::read_symlink(devPath, ec);
+
+                if (ec)
+                {
+                    auto msg =
+                        fmt::format("Failed to get device path from dir {}\n",
+                                    dirPath.string());
+                    log<level::WARNING>(msg.c_str());
+                }
+
+                std::filesystem::path driver =
+                    std::filesystem::read_symlink(devPath / "driver");
+                ncsiWatchDriver = std::filesystem::canonical(devPath / driver);
+
+                ncsiWatchDeviceName = device.filename().string();
+
+                auto msg = fmt::format(
+                    "Starting to watch for NCSI timeout on {} (device {} driver {}) with {}\n",
+                    *info.intf.name, ncsiWatchDeviceName,
+                    ncsiWatchDriver.string(), fd);
+                log<level::NOTICE>(msg.c_str());
+
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(*this, fd);
+            }
+            break;
+        }
+    }
+}
+
+int EthernetInterface::handleNCSITimeout()
+{
+    using namespace std::chrono_literals;
+
+    {
+        std::ofstream file(ncsiWatchDriver / "unbind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    {
+        std::ofstream file(ncsiWatchDriver / "bind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0)
+    {
+        auto msg = fmt::format(
+            "Restarting watch for NCSI timeout on {} (device {} driver {})\n",
+            interfaceName(), ncsiWatchDeviceName, ncsiWatchDriver.string());
+        log<level::NOTICE>(msg.c_str());
+    }
+    else
+    {
+        auto msg = fmt::format(
+            "Failed to restart watch for NCSI timeout on {} (device {} driver {})\n",
+            interfaceName(), ncsiWatchDeviceName, ncsiWatchDriver.string());
+        log<level::WARNING>(msg.c_str());
+    }
+
+    return fd;
+}
+
+bool EthernetInterface::isServiceActive(const std::string& serviceName)
+{
+    std::variant<std::string> serviceState;
+    sdbusplus::message::object_path unitPath;
+
+    auto method = bus.get().new_method_call(
+        "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "GetUnit");
+
+    method.append(serviceName);
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(unitPath);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in GetUnit call: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    method = bus.get().new_method_call(
+        "org.freedesktop.systemd1",
+        static_cast<const std::string&>(unitPath).c_str(),
+        "org.freedesktop.DBus.Properties", "Get");
+
+    method.append("org.freedesktop.systemd1.Unit", "ActiveState");
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(serviceState);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in ActiveState Get: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    const auto& currentStateStr = std::get<std::string>(serviceState);
+    return currentStateStr == "active" || currentStateStr == "activating";
+}
+
+int EthernetInterface::handleIpmiOnNCSITimeout(const std::string& intfName)
+{
+    // Need to force the network IPMI service to restart after the unbind/bind
+    lg2::info("Handling IPMI On NCSI Timeout on {INTERFACE}", "INTERFACE",
+              intfName);
+
+    // Only run the IPMI workaround if the service is running
+    auto serviceName = std::format("phosphor-ipmi-net@{}.service", intfName);
+    if (isServiceActive(serviceName))
+    {
+        lg2::info("IPMI on {INTERFACE} is active so run the workaround",
+                  "INTERFACE", intfName);
+
+        // The workaround is to restart the service so it connects back up
+        // to the newly bound network interface
+        try
+        {
+            auto method = bus.get().new_method_call(
+                "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                "org.freedesktop.systemd1.Manager", "RestartUnit");
+            method.append(serviceName, "replace");
+            bus.get().call_noreply(method);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            lg2::error("Failed to restart service {SERVICE}: {ERROR}",
+                       "SERVICE", serviceName, "ERROR", e);
+            return -1;
+        }
+    }
+    else
+    {
+        lg2::info("IPMI on {INTERFACE} is not active so no workaround needed",
+                  "INTERFACE", intfName);
+    }
+
+    return 0;
 }
 
 void EthernetInterface::updateInfo(const InterfaceInfo& info, bool skipSignal)
@@ -393,7 +636,17 @@ ObjectPath EthernetInterface::staticGateway(std::string gateway,
     std::string route;
     try
     {
-        addr.emplace(stdplus::fromStr<stdplus::InAnyAddr>(gateway));
+        switch (protocolType)
+        {
+            case IP::Protocol::IPv4:
+                addr.emplace(stdplus::fromStr<stdplus::In4Addr>(gateway));
+                break;
+            case IP::Protocol::IPv6:
+                addr.emplace(stdplus::fromStr<stdplus::In6Addr>(gateway));
+                break;
+            default:
+                throw std::logic_error("Exhausted protocols");
+        }
         route = gateway;
     }
     catch (const std::exception& e)
@@ -550,9 +803,22 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
 
 void EthernetInterface::loadNTPServers(const config::Parser& config)
 {
-    EthernetInterfaceIntf::ntpServers(getNTPServerFromTimeSyncd());
-    EthernetInterfaceIntf::staticNTPServers(
-        config.map.getValueStrings("Network", "NTP"));
+    ServerList ntpServerList = getNTPServerFromTimeSyncd();
+    ServerList staticNTPServers = config.map.getValueStrings("Network", "NTP");
+
+    std::unordered_set<std::string> staticNTPServersSet(
+        staticNTPServers.begin(), staticNTPServers.end());
+    ServerList networkSuppliedServers;
+
+    std::copy_if(ntpServerList.begin(), ntpServerList.end(),
+                 std::back_inserter(networkSuppliedServers),
+                 [&staticNTPServersSet](const std::string& server) {
+                     return staticNTPServersSet.find(server) ==
+                            staticNTPServersSet.end();
+                 });
+
+    EthernetInterfaceIntf::ntpServers(networkSuppliedServers);
+    EthernetInterfaceIntf::staticNTPServers(staticNTPServers);
 }
 
 void EthernetInterface::loadNameServers(const config::Parser& config)
@@ -769,7 +1035,14 @@ void EthernetInterface::writeConfigurationFile()
         auto& network = config.map["Network"].emplace_back();
         auto& lla = network["LinkLocalAddressing"];
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-        lla.emplace_back("yes");
+        if (interfaceName() == "eth0")
+        {
+            lla.emplace_back("yes");
+        }
+        else if (interfaceName() == "eth1")
+        {
+            lla.emplace_back("ipv6");
+        }
 #else
         lla.emplace_back("no");
 #endif
@@ -800,6 +1073,7 @@ void EthernetInterface::writeConfigurationFile()
                 dnss.emplace_back(dns);
             }
         }
+        uint8_t prefixLength = 0;
         {
             auto& address = network["Address"];
             for (const auto& addr : addrs)
@@ -807,18 +1081,39 @@ void EthernetInterface::writeConfigurationFile()
                 if (addr.second->origin() == IP::AddressOrigin::Static)
                 {
                     address.emplace_back(stdplus::toStr(addr.first));
+                    if (addr.second->type() == IP::Protocol::IPv4)
+                    {
+                        prefixLength = addr.second->prefixLength();
+                    }
                 }
             }
         }
         {
             if (!dhcp4())
             {
+                auto& gateways = network["Gateway"];
                 auto gateway4 = EthernetInterfaceIntf::defaultGateway();
-                if (!gateway4.empty())
+                if (!gateway4.empty() && prefixLength)
                 {
+                    gateways.emplace_back(gateway4);
                     auto& gateway4route = config.map["Route"].emplace_back();
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
+
+                    std::string routingTableId =
+                        std::to_string(generateRouteTableID(interfaceName()));
+                    gateway4route["Table"].emplace_back(routingTableId);
+                    std::string routeAddressPrefix =
+                        generateNetworkRoute(gateway4, prefixLength);
+
+                    auto& routingPolicyTo =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyTo["Table"].emplace_back(routingTableId);
+                    routingPolicyTo["To"].emplace_back(routeAddressPrefix);
+                    auto& routingPolicyFrom =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyFrom["Table"].emplace_back(routingTableId);
+                    routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
                 }
             }
 
@@ -895,12 +1190,14 @@ std::string EthernetInterface::macAddress([[maybe_unused]] std::string value)
     {
         newMAC = stdplus::fromStr<stdplus::EtherAddr>(value);
     }
-    catch (const std::invalid_argument&)
+    catch (const std::exception& e)
     {
-        lg2::error("MAC Address {NET_MAC} is not valid", "NET_MAC", value);
-        elog<InvalidArgument>(Argument::ARGUMENT_NAME("MACAddress"),
+        lg2::error("Invalid MAC address {NET_MAC}: {ERROR}", "NET_MAC", value,
+                   "ERROR", e);
+        elog<InvalidArgument>(Argument::ARGUMENT_NAME("netmac"),
                               Argument::ARGUMENT_VALUE(value.c_str()));
     }
+
     if (!newMAC.isUnicast())
     {
         lg2::error("MAC Address {NET_MAC} is not valid", "NET_MAC", value);
@@ -937,17 +1234,18 @@ std::string EthernetInterface::macAddress([[maybe_unused]] std::string value)
         manager.get().reloadConfigs();
     }
 
-#ifdef HAVE_UBOOT_ENV
-    // Ensure that the valid address is stored in the u-boot-env
-    auto envVar = interfaceToUbootEthAddr(interface);
-    if (envVar)
+    std::error_code ec;
+    const auto fw_setenv = std::filesystem::path("/sbin/fw_setenv");
+    if (std::filesystem::exists(fw_setenv, ec))
     {
-        // Trimming MAC addresses that are out of range. eg: AA:FF:FF:FF:FF:100;
-        // and those having more than 6 bytes. eg: AA:AA:AA:AA:AA:AA:BB
-        execute("/sbin/fw_setenv", "fw_setenv", envVar->c_str(),
-                validMAC.c_str());
+        // Ensure that the valid address is stored in the u-boot-env
+        auto envVar = interfaceToUbootEthAddr(interface);
+        if (envVar)
+        {
+            execute(fw_setenv.native(), "fw_setenv", envVar->c_str(),
+                    validMAC.c_str());
+        }
     }
-#endif // HAVE_UBOOT_ENV
 
     return value;
 #else
@@ -1067,6 +1365,16 @@ void EthernetInterface::VlanProperties::delete_()
     }
 
     eth.get().manager.get().reloadConfigs();
+}
+
+bool EthernetInterface::emitLLDP(bool value)
+{
+    if (emitLLDP() != EthernetInterfaceIntf::emitLLDP(value))
+    {
+        manager.get().writeLLDPDConfigurationFile();
+        manager.get().reloadLLDPService();
+    }
+    return value;
 }
 
 void EthernetInterface::reloadConfigs()
