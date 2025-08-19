@@ -37,10 +37,10 @@ executable(
 
 main_deps = []
 main_srcs = []
-if get_option('sync-mac')
-    main_srcs += ['inventory_mac.cpp']
-    main_deps += [dependency('nlohmann_json', include_type: 'system')]
-endif
+#if get_option('sync-mac')
+#    main_srcs += ['inventory_mac.cpp']
+#    main_deps += [dependency('nlohmann_json', include_type: 'system')]
+#endif
 
 networkd_deps = [
     phosphor_dbus_interfaces_dep,

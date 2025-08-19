@@ -1,7 +1,7 @@
 #include "config.h"
 
 #ifdef SYNC_MAC_FROM_INVENTORY
-#include "inventory_mac.hpp"
+//#include "inventory_mac.hpp"
 #endif
 #include "network_manager.hpp"
 #include "rtnetlink_server.hpp"
@@ -71,9 +71,9 @@ int main()
                                      "/etc/systemd/network");
     netlink::Server svr(event, manager);
 
-#ifdef SYNC_MAC_FROM_INVENTORY
-    auto runtime = inventory::watch(bus, manager);
-#endif
+/*#ifdef SYNC_MAC_FROM_INVENTORY
+    sync_mac();
+#endif*/
 
     bus.request_name(DEFAULT_BUSNAME);
     return sdeventplus::utility::loopWithBus(event, bus);

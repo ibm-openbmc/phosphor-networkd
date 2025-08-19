@@ -153,6 +153,26 @@ EthernetInterface::EthernetInterface(
                       config, enabled)
 {}
 
+stdplus::EtherAddr EthernetInterface::getMACFromSysfs(const std::string& intfname)
+{
+    std::string path = "/sys/class/net/" + intfname + "/address";
+    std::ifstream macFile(path);
+    std::string mac;
+    if (macFile && std::getline(macFile, mac))
+    {
+        lg2::info("Read MAC from sysfs for {NET_INTF}: {NET_MAC}",
+                  "NET_INTF", intfname, "NET_MAC", mac);
+        return stdplus::fromStr<stdplus::EtherAddr>(mac);
+    }
+    else
+    {
+        lg2::error("Failed to read MAC from sysfs for {NET_INTF}",
+                   "NET_INTF", intfname);
+        throw std::runtime_error("Failed to read MAC from sysfs");
+    }
+}
+
+
 EthernetInterface::EthernetInterface(
     stdplus::PinnedRef<sdbusplus::bus_t> bus,
     stdplus::PinnedRef<Manager> manager, const AllIntfInfo& info,
@@ -161,6 +181,10 @@ EthernetInterface::EthernetInterface(
     bus(bus), objPath(std::move(objPath))
 {
     interfaceName(*info.intf.name, true);
+    // Get mac from sysfs
+    std::string macOnIntf = stdplus::toStr(getMACFromSysfs(interfaceName()));
+    lg2::error("MAC: {MAC}", "MAC", macOnIntf);
+    MacAddressIntf::macAddress(macOnIntf);
     auto dhcpVal = getDHCPValue(config);
     EthernetInterfaceIntf::dhcp4(dhcpVal.v4, true);
     EthernetInterfaceIntf::dhcp6(dhcpVal.v6, true);

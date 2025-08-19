@@ -235,6 +235,8 @@ class EthernetInterface : public Ifaces
      */
     bool emitLLDP(bool value) override;
 
+    stdplus::EtherAddr getMACFromSysfs(const std::string& intfname);
+
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
     using EthernetInterfaceIntf::mtu;
