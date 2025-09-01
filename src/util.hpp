@@ -73,6 +73,13 @@ DHCPVal getDHCPValue(const config::Parser& config);
 bool getDHCPProp(const config::Parser& config, DHCPType dhcpType,
                  std::string_view key);
 
+/** @brief Read LLDP packet data
+ * @param[in] interface - interface name
+ * @param[in] lldpIP - Neighbor IP address
+ * @param[in] lldpMAC - Neighbor MAC address
+ */
+bool lldpGetNeighborIP(const std::string& interface, std::string& lldpIP, std::string& lldpMAC);
+
 /** @brief Read LLDP configuration from lldpd conf file
  */
 std::map<std::string, bool> parseLLDPConf();

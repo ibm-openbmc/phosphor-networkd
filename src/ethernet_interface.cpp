@@ -171,6 +171,26 @@ EthernetInterface::EthernetInterface(
     {
         EthernetInterfaceIntf::emitLLDP(lldpVal[interfaceName()], true);
     }
+    std::string lldpMacAddr;
+    std::string lldpIP;
+    if (lldpGetNeighborIP(*info.intf.name, lldpIP, lldpMacAddr))
+    {
+        NeighborInfo lldpNeigh;
+        std::optional<stdplus::InAnyAddr> addr;
+        addr.emplace(stdplus::fromStr<stdplus::In4Addr>(lldpIP));
+
+        if (*info.intf.name == "eth0")
+        {
+            lldpNeigh.ifidx = 0;
+        }
+        else if (*info.intf.name == "eth1")
+        {
+            lldpNeigh.ifidx = 1;
+        }
+        lldpNeigh.addr = addr;
+        lldpNeigh.mac = stdplus::fromStr<stdplus::EtherAddr>(lldpMacAddr);
+        addStaticNeigh(lldpNeigh);
+    }
     EthernetInterfaceIntf::ntpServers(
         config.map.getValueStrings("Network", "NTP"), true);
 
