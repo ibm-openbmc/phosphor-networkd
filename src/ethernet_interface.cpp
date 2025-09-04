@@ -1013,6 +1013,51 @@ static void writeUpdatedTime(const Manager& manager,
     }
 }
 
+size_t getBMCPosition()
+{
+    size_t bmcPosition = 0;
+
+    // NOTE:  This a temporary solution for simulation until the
+    // daemon that should be providing this information is in place.
+
+    // Read it out of the bmc_position uboot environment variable
+    // This was written by a simulation script.
+    std::string cmd{"/sbin/fw_printenv -n bmc_position"};
+
+    // NOLINTBEGIN(cert-env33-c)
+    FILE* pipe = popen(cmd.c_str(), "r");
+    // NOLINTEND(cert-env33-c)
+    if (pipe == nullptr)
+    {
+        throw std::runtime_error("Error calling popen to get bmc_position");
+    }
+
+    std::string output;
+    std::array<char, 128> buffer;
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr)
+    {
+        output.append(buffer.data());
+    }
+
+    int rc = pclose(pipe);
+    if (WEXITSTATUS(rc) != 0)
+    {
+        throw std::runtime_error{std::format(
+            "Error running cmd: {}, output = {}, rc = {}", cmd, output, rc)};
+    }
+
+    auto [_,
+          ec] = std::from_chars(&*output.begin(), &*output.end(), bmcPosition);
+    if (ec != std::errc())
+    {
+        throw std::runtime_error{
+            std::format("Could not extract position from {}: rc {}", output,
+                        std::to_underlying(ec))};
+    }
+
+    return bmcPosition;
+}
+
 void EthernetInterface::writeConfigurationFile()
 {
     config::Parser config;
@@ -1085,6 +1130,24 @@ void EthernetInterface::writeConfigurationFile()
                     {
                         prefixLength = addr.second->prefixLength();
                     }
+                }
+            }
+
+            // NOTE:  This a temporary solution for simulation until the
+            // daemon that should be providing this information is in place.
+
+            // Simics skiboard model connected BMC0's eth1 and BMC1's eth1
+            // interface for simulating redundant BMC internal network.
+            size_t bmcPosition = getBMCPosition();
+            if (interfaceName() == "eth1")
+            {
+                if (bmcPosition == 1)
+                {
+                    address.emplace_back("9.6.28.101/24");
+                }
+                else if (bmcPosition == 0)
+                {
+                    address.emplace_back("9.6.28.100/24");
                 }
             }
         }
