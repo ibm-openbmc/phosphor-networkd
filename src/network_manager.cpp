@@ -569,5 +569,23 @@ void Manager::reloadLLDPService()
     }
 }
 
+void Manager::restartSystemdUnit(const std::string& unit)
+{
+    try
+    {
+        auto bus = sdbusplus::bus::new_default();
+        auto method = bus.new_method_call(
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+            "org.freedesktop.systemd1.Manager", "RestartUnit");
+        method.append(unit, "replace");
+        bus.call_noreply(method);
+    }
+    catch (const sdbusplus::exception_t& ex)
+    {
+        lg2::error("Failed to restart service {SERVICE}: {ERR}", "SERVICE",
+                   unit, "ERR", ex);
+    }
+}
+
 } // namespace network
 } // namespace phosphor
