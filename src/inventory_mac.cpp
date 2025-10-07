@@ -37,6 +37,8 @@ constexpr auto configFile = "/usr/share/network/config.json";
 
 constexpr auto invNetworkIntf =
     "xyz.openbmc_project.Inventory.Item.NetworkInterface";
+constexpr auto invPositionIntf =
+    "xyz.openbmc_project.Inventory.Decorator.Position";
 constexpr auto invRoot = "/xyz/openbmc_project/inventory";
 constexpr auto mapperBus = "xyz.openbmc_project.ObjectMapper";
 constexpr auto mapperObj = "/xyz/openbmc_project/object_mapper";
@@ -47,6 +49,7 @@ constexpr auto methodGet = "Get";
 Manager* manager = nullptr;
 std::unique_ptr<sdbusplus::bus::match_t> EthInterfaceMatch = nullptr;
 std::unique_ptr<sdbusplus::bus::match_t> MacAddressMatch = nullptr;
+std::unique_ptr<sdbusplus::bus::match_t> BMCPositionMatch = nullptr;
 std::vector<std::string> first_boot_status;
 nlohmann::json configJson;
 
@@ -74,6 +77,61 @@ void setFirstBootMACOnInterface(const std::string& intf, const std::string& mac)
             }
         }
     }
+}
+
+uint32_t getPositionFromInventory(sdbusplus::bus_t& bus)
+{
+    lg2::error("getPositionFromInventory");
+    std::vector<DbusInterface> interfaces;
+    interfaces.emplace_back(invPositionIntf);
+
+    auto depth = 0;
+
+    auto mapperCall =
+        bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
+
+    mapperCall.append(invRoot, depth, interfaces);
+
+    auto mapperReply = bus.call(mapperCall);
+    if (mapperReply.is_method_error())
+    {
+        lg2::error("Error in mapper call");
+        elog<InternalFailure>();
+    }
+
+    ObjectTree objectTree;
+    mapperReply.read(objectTree);
+
+    if (objectTree.empty())
+    {
+        lg2::error("No Object has implemented the interface {NET_INTF}",
+                   "NET_INTF", invPositionIntf);
+        elog<InternalFailure>();
+    }
+
+    DbusObjectPath objPath;
+    DbusService service;
+
+    objPath = objectTree.begin()->first;
+    service = objectTree.begin()->second.begin()->first;
+
+    auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
+                                      propIntf, methodGet);
+
+    method.append(invPositionIntf, "Position");
+
+    auto reply = bus.call(method);
+    if (reply.is_method_error())
+    {
+        lg2::error(
+            "Failed to get MACAddress for path {DBUS_PATH} interface {DBUS_INTF}",
+            "DBUS_PATH", objPath, "DBUS_INTF", invPositionIntf);
+        elog<InternalFailure>();
+    }
+
+    std::variant<uint32_t> value;
+    reply.read(value);
+    return std::get<uint32_t>(value);
 }
 
 stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
@@ -204,6 +262,97 @@ bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
         return false;
     }
     return true;
+}
+
+void setIPAddressOnInternalInterface(const std::string& intf, const uint32_t& bmcPosition)
+{
+    for (const auto& interface : manager->interfaces)
+    {
+        if (interface.first == intf)
+        {
+            if (bmcPosition == 1)
+            {
+	        auto obj = interface.second->ip(IP::Protocol::IPv4, "9.6.28.101", 24, "");
+            }
+            else if (bmcPosition == 0)
+            {
+                auto obj = interface.second->ip(IP::Protocol::IPv4, "9.6.28.100", 24, "");
+            }
+            else
+            {
+                lg2::info("Invalid BMC position");
+            }
+        }
+    }
+}
+
+bool setIPaddressUsingPosition(sdbusplus::bus_t& bus, const std::string& intfname)
+{
+    try
+    {
+        auto position = getPositionFromInventory(bus);
+
+        if ((position == 0) || (position == 1))
+        {
+            lg2::error(
+                "BMC Poistion {NET_POS} in Inventory",
+                "NET_POS", position);
+            setIPAddressOnInternalInterface("eth1", position);
+        }
+        else
+        {
+            lg2::info("Nothing is present in Inventory");
+            return false;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Exception occurred during getting of BMC position "
+                   "address from Inventory");
+        return false;
+    }
+    return true;
+}
+
+void registerBMCPositionSignal(sdbusplus::bus_t& bus)
+{
+    lg2::info("Registering the Inventory Signals Matcher for BMC position");
+
+    auto callback = [&](sdbusplus::message_t& m) {
+        std::map<DbusObjectPath,
+                 std::map<DbusInterface, std::variant<PropertyValue>>>
+            interfacesProperties;
+
+        sdbusplus::message::object_path objPath;
+        m.read(objPath, interfacesProperties);
+
+                for (auto& interface : interfacesProperties)
+                {
+                    if (interface.first == invPositionIntf)
+                    {
+                        for (const auto& property : interface.second)
+                        {
+                            if (property.first == "Position")
+                            {
+                                lg2::info("Position value changed");
+                                setIPaddressUsingPosition(bus,"eth1");
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+    };
+
+    std::string propertiesMatchString =
+        ("type='signal',"
+         "interface='org.freedesktop.DBus.Properties',"
+         "path='/xyz/openbmc_project/inventory/system',"
+         "arg0='xyz.openbmc_project.Inventory.Decorator.Position',"
+         "member='PropertiesChanged'");
+
+    BMCPositionMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus, propertiesMatchString, callback);
 }
 
 // register the matches to be monitored from inventory manager
@@ -345,6 +494,17 @@ void watchEthernetInterface(sdbusplus::bus_t& bus)
     }
 }
 
+void watchBMCPosition(sdbusplus::bus_t& bus)
+{
+    lg2::info("in watchBMCPosition");
+    registerBMCPositionSignal(bus);
+    std::string infname;
+    if (setIPaddressUsingPosition(bus, infname))
+    {
+        BMCPositionMatch = nullptr;
+    }
+}
+
 std::unique_ptr<Runtime> watch(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                stdplus::PinnedRef<Manager> m)
 {
@@ -352,6 +512,7 @@ std::unique_ptr<Runtime> watch(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     std::ifstream in(configFile);
     in >> configJson;
     watchEthernetInterface(bus);
+    watchBMCPosition(bus);
     return nullptr;
 }
 
