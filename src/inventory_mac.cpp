@@ -37,6 +37,10 @@ constexpr auto configFile = "/usr/share/network/config.json";
 
 constexpr auto invNetworkIntf =
     "xyz.openbmc_project.Inventory.Item.NetworkInterface";
+#ifdef ENABLE_RBMC_CONFIG
+constexpr auto invPositionIntf =
+    "xyz.openbmc_project.Inventory.Decorator.Position";
+#endif
 constexpr auto invRoot = "/xyz/openbmc_project/inventory";
 constexpr auto mapperBus = "xyz.openbmc_project.ObjectMapper";
 constexpr auto mapperObj = "/xyz/openbmc_project/object_mapper";
@@ -47,6 +51,10 @@ constexpr auto methodGet = "Get";
 Manager* manager = nullptr;
 std::unique_ptr<sdbusplus::bus::match_t> EthInterfaceMatch = nullptr;
 std::unique_ptr<sdbusplus::bus::match_t> MacAddressMatch = nullptr;
+#ifdef ENABLE_RBMC_CONFIG
+std::unique_ptr<sdbusplus::bus::match_t> BMCPositionMatch = nullptr;
+std::unique_ptr<sdbusplus::bus::match_t> BMCPositionInterfaceMatch = nullptr;
+#endif
 std::vector<std::string> first_boot_status;
 nlohmann::json configJson;
 
@@ -75,6 +83,61 @@ void setFirstBootMACOnInterface(const std::string& intf, const std::string& mac)
         }
     }
 }
+
+#ifdef ENABLE_RBMC_CONFIG
+uint32_t getPositionFromInventory(sdbusplus::bus_t& bus)
+{
+    std::vector<DbusInterface> interfaces;
+    interfaces.emplace_back(invPositionIntf);
+
+    auto depth = 0;
+    auto mapperCall =
+        bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
+
+    mapperCall.append(invRoot, depth, interfaces);
+
+    auto mapperReply = bus.call(mapperCall);
+    if (mapperReply.is_method_error())
+    {
+        lg2::error("Error in mapper call");
+        elog<InternalFailure>();
+    }
+
+    ObjectTree objectTree;
+    mapperReply.read(objectTree);
+
+    if (objectTree.empty())
+    {
+        lg2::error("No Object has implemented the interface {NET_INTF}",
+                   "NET_INTF", invPositionIntf);
+        elog<InternalFailure>();
+    }
+
+    DbusObjectPath objPath;
+    DbusService service;
+
+    objPath = objectTree.begin()->first;
+    service = objectTree.begin()->second.begin()->first;
+
+    auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
+                                      propIntf, methodGet);
+
+    method.append(invPositionIntf, "Position");
+
+    auto reply = bus.call(method);
+    if (reply.is_method_error())
+    {
+        lg2::error(
+            "Failed to get MACAddress for path {DBUS_PATH} interface {DBUS_INTF}",
+            "DBUS_PATH", objPath, "DBUS_INTF", invPositionIntf);
+        elog<InternalFailure>();
+    }
+
+    std::variant<uint32_t> value;
+    reply.read(value);
+    return std::get<uint32_t>(value);
+}
+#endif
 
 stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
                                     const std::string& intfName)
@@ -204,6 +267,141 @@ bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
     }
     return true;
 }
+
+#ifdef ENABLE_RBMC_CONFIG
+void setIPAddressOnInternalInterface(const std::string& intf,
+                                     const uint32_t& bmcPosition)
+{
+    for (const auto& interface : manager->interfaces)
+    {
+        if (interface.first == intf)
+        {
+            if (bmcPosition == 1)
+            {
+                auto obj = interface.second->ip(IP::Protocol::IPv4,
+                                                "9.6.28.101", 24, "");
+            }
+            else if (bmcPosition == 0)
+            {
+                auto obj = interface.second->ip(IP::Protocol::IPv4,
+                                                "9.6.28.100", 24, "");
+            }
+            else
+            {
+                lg2::info("Invalid BMC position");
+            }
+        }
+    }
+}
+
+bool setIPaddressUsingPosition(sdbusplus::bus_t& bus)
+{
+    try
+    {
+        auto position = getPositionFromInventory(bus);
+        if ((position == 0) || (position == 1))
+        {
+            lg2::info("BMC Position {NET_POS} in Inventory", "NET_POS",
+                      position);
+            setIPAddressOnInternalInterface("eth1", position);
+        }
+        else
+        {
+            lg2::info("Nothing is present in Inventory");
+            return false;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Exception occurred during getting of BMC position "
+                   "address from Inventory");
+        return false;
+    }
+    return true;
+}
+
+void registerBMCPositionPropertyChangeSignal(sdbusplus::bus_t& bus)
+{
+    lg2::info(
+        "Registering the PropertyChanged signal matcher for BMC position");
+    auto callback = [&](sdbusplus::message_t& m) {
+        std::map<DbusObjectPath,
+                 std::map<DbusInterface, std::variant<PropertyValue>>>
+            interfacesProperties;
+        lg2::info("Got position interfaces or property change signal");
+        sdbusplus::message::object_path objPath;
+        m.read(objPath, interfacesProperties);
+
+        for (auto& interface : interfacesProperties)
+        {
+            if (interface.first == invPositionIntf)
+            {
+                for (const auto& property : interface.second)
+                {
+                    if (property.first == "Position")
+                    {
+                        lg2::info("Position value changed");
+                        // TODO: Eth1 interface modeled as peer to peer
+                        // connected ethernet interface for rbmc redundancy
+                        setIPaddressUsingPosition(bus);
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    };
+
+    std::string propertiesMatchString =
+        ("type='signal',"
+         "interface='org.freedesktop.DBus.Properties',"
+         "path='/xyz/openbmc_project/inventory/system',"
+         "arg0='xyz.openbmc_project.Inventory.Decorator.Position',"
+         "member='PropertiesChanged'");
+
+    BMCPositionMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus, propertiesMatchString, callback);
+}
+
+void registerBMCPositionInterfacesAddedSignal(sdbusplus::bus_t& bus)
+{
+    lg2::info("Registering InterfacesAdded Signal Matcher for BMC position");
+    auto callback = [&](sdbusplus::message_t& m) {
+        std::map<DbusObjectPath,
+                 std::map<DbusInterface, std::variant<PropertyValue>>>
+            interfacesProperties;
+
+        sdbusplus::message::object_path objPath;
+        m.read(objPath, interfacesProperties);
+
+        for (auto& interface : interfacesProperties)
+        {
+            if (interface.first == invPositionIntf)
+            {
+                for (const auto& property : interface.second)
+                {
+                    if (property.first == "Position")
+                    {
+                        lg2::info("Position interface added");
+                        // TODO: Eth1 interface modeled as peer to peer
+                        // connected ethernet interface for rbmc redundancy
+                        setIPaddressUsingPosition(bus);
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    };
+
+    BMCPositionInterfaceMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus,
+        "interface='org.freedesktop.DBus.ObjectManager',type='signal',"
+        "member='InterfacesAdded',path='/xyz/openbmc_project/"
+        "inventory/system'",
+        callback);
+}
+#endif
 
 // register the matches to be monitored from inventory manager
 void registerSignals(sdbusplus::bus_t& bus)
@@ -344,6 +542,20 @@ void watchEthernetInterface(sdbusplus::bus_t& bus)
     }
 }
 
+#ifdef ENABLE_RBMC_CONFIG
+void watchBMCPosition(sdbusplus::bus_t& bus)
+{
+    registerBMCPositionInterfacesAddedSignal(bus);
+    registerBMCPositionPropertyChangeSignal(bus);
+
+    if (setIPaddressUsingPosition(bus))
+    {
+        BMCPositionMatch = nullptr;
+        BMCPositionInterfaceMatch = nullptr;
+    }
+}
+#endif
+
 std::unique_ptr<Runtime> watch(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                stdplus::PinnedRef<Manager> m)
 {
@@ -351,6 +563,9 @@ std::unique_ptr<Runtime> watch(stdplus::PinnedRef<sdbusplus::bus_t> bus,
     std::ifstream in(configFile);
     in >> configJson;
     watchEthernetInterface(bus);
+#ifdef ENABLE_RBMC_CONFIG
+    watchBMCPosition(bus);
+#endif
     return nullptr;
 }
 
