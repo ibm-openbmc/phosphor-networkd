@@ -20,6 +20,9 @@ struct TestManagerData
     MockExecutor mockReload;
     fu2::unique_function<void()> reloadCb;
 
+    MockExecutor mockRestart;
+    fu2::unique_function<void()> restartCb;
+
     inline MockExecutor& reloadForManager()
     {
         EXPECT_CALL(mockReload, setCallback(testing::_))
@@ -28,6 +31,15 @@ struct TestManagerData
             });
         return mockReload;
     }
+
+    inline MockExecutor& restartForManager()
+    {
+        EXPECT_CALL(mockRestart, setCallback(testing::_))
+            .WillOnce([&](fu2::unique_function<void()>&& cb) {
+                restartCb = std::move(cb);
+            });
+        return mockRestart;
+    }
 };
 
 struct TestManager : TestManagerData, Manager
@@ -35,7 +47,7 @@ struct TestManager : TestManagerData, Manager
     inline TestManager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                        stdplus::zstring_view path,
                        const std::filesystem::path& dir) :
-        Manager(bus, reloadForManager(), path, dir)
+        Manager(bus, reloadForManager(), restartForManager(), path, dir)
     {}
 
     using Manager::handleAdminState;

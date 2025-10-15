@@ -631,7 +631,7 @@ ObjectPath EthernetInterface::ip(IP::Protocol protType, std::string ipaddress,
     }
 
     writeConfigurationFile();
-    manager.get().reloadConfigs();
+    manager.get().restartConfigs();
 
     return it->second->getObjPath();
 }
@@ -731,7 +731,7 @@ ObjectPath EthernetInterface::staticGateway(std::string gateway,
     }
 
     writeConfigurationFile();
-    manager.get().reloadConfigs();
+    manager.get().restartConfigs();
 
     return it->second->getObjPath();
 }
@@ -890,7 +890,7 @@ ServerList EthernetInterface::staticNameServers(ServerList value)
         EthernetInterfaceIntf::staticNameServers(std::move(dnsUniqueValues));
 
     writeConfigurationFile();
-    manager.get().reloadConfigs();
+    manager.get().restartConfigs();
 
     return value;
 }
@@ -1422,7 +1422,7 @@ std::string EthernetInterface::defaultGateway(std::string gateway)
     {
         gateway = EthernetInterfaceIntf::defaultGateway(std::move(gateway));
         writeConfigurationFile();
-        manager.get().reloadConfigs();
+        manager.get().restartConfigs();
     }
     return gateway;
 }
@@ -1434,7 +1434,7 @@ std::string EthernetInterface::defaultGateway6(std::string gateway)
     {
         gateway = EthernetInterfaceIntf::defaultGateway6(std::move(gateway));
         writeConfigurationFile();
-        manager.get().reloadConfigs();
+        manager.get().restartConfigs();
     }
     return gateway;
 }

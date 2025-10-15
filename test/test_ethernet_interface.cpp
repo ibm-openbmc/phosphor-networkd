@@ -149,7 +149,7 @@ TEST_F(TestEthernetInterface, CheckObjectPath)
 TEST_F(TestEthernetInterface, addStaticNameServers)
 {
     ServerList servers = {"9.1.1.1", "9.2.2.2", "9.3.3.3"};
-    EXPECT_CALL(manager.mockReload, schedule());
+    EXPECT_CALL(manager.mockRestart, schedule());
     interface.staticNameServers(servers);
     config::Parser parser((confDir / "00-bmc-test0.network").native());
     EXPECT_EQ(servers, parser.map.getValueStrings("Network", "DNS"));
