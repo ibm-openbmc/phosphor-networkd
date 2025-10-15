@@ -186,7 +186,10 @@ void HypNetworkMgr::setBIOSTableAttrs()
             {
                 const std::string& itemType =
                     std::get<biosBaseAttrType>(item.second);
-
+                if (item.first.rfind("vmi_if1", 0) == 0)
+                {
+                    if1Present = 1;
+                }
                 if (itemType.compare(itemType.size() - intType.size(),
                                      intType.size(), intType) == 0)
                 {
@@ -243,21 +246,23 @@ void HypNetworkMgr::createIfObjects()
     // created during init time to support the static
     // network configurations on the both.
     // create eth0 and eth1 objects
-    lg2::info("Creating eth0 and eth1 objects");
+    log<level::INFO>("Creating eth0 object");
     interfaces.emplace(
         "eth0",
         std::make_unique<HypEthInterface>(
             bus, sdbusplus::message::object_path(objectPath.str + "/eth0"),
             "eth0", *this));
-    interfaces.emplace(
-        "eth1",
-        std::make_unique<HypEthInterface>(
-            bus, sdbusplus::message::object_path(objectPath.str + "/eth1"),
-            "eth1", *this));
-
-    // Create ip address objects for each ethernet interface
     interfaces["eth0"]->createIPAddressObjects();
-    interfaces["eth1"]->createIPAddressObjects();
+    if (if1Present)
+    {
+        log<level::INFO>("Creating eth1 object");
+        interfaces.emplace(
+            "eth1",
+            std::make_unique<HypEthInterface>(
+                bus, sdbusplus::message::object_path(objectPath.str + "/eth1"),
+                "eth1", *this));
+        interfaces["eth1"]->createIPAddressObjects();
+    }
 
     // Call watch method to register for properties changed signal
     // This method can be called only once
