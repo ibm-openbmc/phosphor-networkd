@@ -41,13 +41,11 @@ class Manager : public ManagerIface
     /** @brief Constructor to put object onto bus at a dbus path.
      *  @param[in] bus - Bus to attach to.
      *  @param[in] reload - The executor for reloading configs
-     *  @param[in] restart - The executor for restarting configs
      *  @param[in] objPath - Path to attach at.
      *  @param[in] confDir - Network Configuration directory path.
      */
     Manager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
             stdplus::PinnedRef<DelayedExecutor> reload,
-            stdplus::PinnedRef<DelayedExecutor> restart,
             stdplus::zstring_view objPath,
             const std::filesystem::path& confDir);
 
@@ -108,14 +106,6 @@ class Manager : public ManagerIface
         reload.get().schedule();
     }
 
-    /** @brief Arms a timer to tell systemd-network to restart all of the
-     * network configurations
-     */
-    inline void restartConfigs()
-    {
-        restart.get().schedule();
-    }
-
     /** Reload LLDP configuration
      */
     void reloadLLDPService();
@@ -142,9 +132,6 @@ class Manager : public ManagerIface
   protected:
     /** @brief Handle to the object used to trigger reloads of networkd. */
     stdplus::PinnedRef<DelayedExecutor> reload;
-
-    /** @brief Handle to the object used to trigger restart of networkd. */
-    stdplus::PinnedRef<DelayedExecutor> restart;
 
     /** @brief Persistent sdbusplus DBus bus connection. */
     stdplus::PinnedRef<sdbusplus::bus_t> bus;

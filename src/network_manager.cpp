@@ -48,12 +48,10 @@ static constexpr const char enabledMatch[] =
 
 Manager::Manager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                  stdplus::PinnedRef<DelayedExecutor> reload,
-                 stdplus::PinnedRef<DelayedExecutor> restart,
                  stdplus::zstring_view objPath,
                  const std::filesystem::path& confDir) :
     ManagerIface(bus, objPath.c_str(), ManagerIface::action::defer_emit),
-    reload(reload), restart(restart), bus(bus), objPath(std::string(objPath)),
-    confDir(confDir),
+    reload(reload), bus(bus), objPath(std::string(objPath)), confDir(confDir),
     systemdNetworkdEnabledMatch(
         bus, enabledMatch,
         [man = stdplus::PinnedRef(*this)](sdbusplus::message_t& m) {
@@ -128,25 +126,6 @@ Manager::Manager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
         }
         self.get().reloadPostHooks.clear();
     });
-
-    restart.get().setCallback([self = stdplus::PinnedRef(*this)]() {
-        try
-        {
-            lg2::info("Restarting systemd-networkd");
-            auto method = self.get().bus.get().new_method_call(
-                "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
-                "org.freedesktop.systemd1.Manager", "RestartUnit");
-
-            method.append("systemd-networkd.service");
-            method.append("replace");
-            self.get().bus.get().call(method);
-        }
-        catch (const sdbusplus::exception_t& ex)
-        {
-            lg2::error("Failed to restart configuration: {ERROR}", "ERROR", ex);
-        }
-    });
-
     std::vector<
         std::tuple<int32_t, std::string, sdbusplus::message::object_path>>
         links;
