@@ -1222,13 +1222,36 @@ void EthernetInterface::writeConfigurationFile()
                     std::string routeAddressPrefix =
                         generateNetworkRoute(gateway4, prefixLength);
 
+                    // Adding Default route in main routing table with lower
+                    // route priority 10
+                    // These main routing table entries addresses direct
+                    // ethernet on link network routing.
+                    auto& routingPolicyDestination =
+                        config.map["Route"].emplace_back();
+                    routingPolicyDestination["Table"].emplace_back("main");
+                    routingPolicyDestination["Scope"].emplace_back("link");
+                    routingPolicyDestination["Destination"].emplace_back(
+                       routeAddressPrefix);
+                    auto& routingMainPolicyTo =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingMainPolicyTo["Table"].emplace_back("main");
+                    routingMainPolicyTo["Priority"].emplace_back("10");
+                    routingMainPolicyTo["To"].emplace_back(routeAddressPrefix);
+                    auto& routingMainPolicyFrom =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingMainPolicyFrom["Table"].emplace_back("main");
+                    routingMainPolicyFrom["Priority"].emplace_back("10");
+                    routingMainPolicyFrom["From"].emplace_back(routeAddressPrefix);
+
                     auto& routingPolicyTo =
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingPolicyTo["Table"].emplace_back(routingTableId);
+                    routingPolicyTo["Priority"].emplace_back("100");
                     routingPolicyTo["To"].emplace_back(routeAddressPrefix);
                     auto& routingPolicyFrom =
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingPolicyFrom["Table"].emplace_back(routingTableId);
+                    routingPolicyFrom["Priority"].emplace_back("100");
                     routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
                 }
             }
