@@ -112,7 +112,7 @@ void IPAddress::delete_()
     }
 
     parent.get().writeConfigurationFile();
-    parent.get().manager.get().restartConfigs();
+    parent.get().manager.get().reloadConfigs();
 }
 
 } // namespace network
