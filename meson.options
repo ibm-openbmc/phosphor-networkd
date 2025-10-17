@@ -31,4 +31,9 @@ option(
     type: 'boolean',
     description: 'Force sync mac address no matter is first boot or not',
 )
+option(
+    'enable-rbmc-config',
+    type: 'boolean',
+    description: 'Enable rbmc configuration on internal interface, assigns IP address using BMC position ',
+)
 option('lldp', type: 'boolean', description: 'Enable LLDP neighbor discovery')
