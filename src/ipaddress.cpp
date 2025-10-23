@@ -112,7 +112,7 @@ void IPAddress::delete_()
     }
 
     parent.get().writeConfigurationFile();
-    parent.get().manager.get().reloadConfigs();
+    parent.get().manager.get().restartSystemdUnit("systemd-networkd.service");
 }
 
 } // namespace network

@@ -110,6 +110,10 @@ class Manager : public ManagerIface
      */
     void reloadLLDPService();
 
+    /** Restart systemd service unit
+     */
+    void restartSystemdUnit(const std::string& unit);
+
     /** @brief Persistent map of EthernetInterface dbus objects and their names
      */
     stdplus::string_umap<std::unique_ptr<EthernetInterface>> interfaces;
