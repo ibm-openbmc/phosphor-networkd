@@ -21,4 +21,6 @@ void setNICUp(std::string_view ifname, bool up);
 
 void deleteIntf(unsigned idx);
 
+bool deleteLinkLocalIPv4ViaNetlink(unsigned ifidx,
+                                   const stdplus::SubnetAny& ip);
 } // namespace phosphor::network::system
