@@ -430,7 +430,54 @@ void EthernetInterface::addAddr(const AddressInfo& info)
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
     if (info.scope == RT_SCOPE_LINK)
     {
-        origin = IP::AddressOrigin::LinkLocal;
+        try
+        {
+            stdplus::ToStrHandle<stdplus::IntToStr<10, unsigned>> tsh;
+            auto obj = stdplus::strCat("/org/freedesktop/network1/link/_3"sv,
+                                       tsh(info.ifidx));
+            auto req = bus.get().new_method_call(
+                "org.freedesktop.network1", obj.c_str(),
+                "org.freedesktop.DBus.Properties", "GetAll");
+            req.append("org.freedesktop.network1.Link");
+            auto rsp = req.call();
+            std::map<std::string, std::variant<std::string>> props;
+            rsp.read(props);
+            auto operationalStateIt = props.find("OperationalState");
+            auto ipv4addressStateIt = props.find("IPv4AddressState");
+
+            if ((operationalStateIt != props.end()) &&
+                (ipv4addressStateIt != props.end()))
+            {
+                const std::string& opState =
+                    std::get<std::string>(operationalStateIt->second);
+                const std::string& ipv4State =
+                    std::get<std::string>(ipv4addressStateIt->second);
+
+                if ((opState == "routable") && (ipv4State == "routable"))
+                {
+                    bool status = system::deleteLinkLocalIPv4ViaNetlink(
+                        info.ifidx, info.ifaddr);
+                    if (status)
+                    {
+                        lg2::info("Deleted IPv4 linklocal address");
+                    }
+                    else
+                    {
+                        lg2::error("Failed to delete IPv4 Linklocal address");
+                    }
+                }
+                else
+                {
+                    origin = IP::AddressOrigin::LinkLocal;
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error(
+                "Failed to read link OperationalState and IPv4AddressState : {ERROR}",
+                "ERROR", e);
+        }
     }
 #endif
 
@@ -1213,46 +1260,68 @@ void EthernetInterface::writeConfigurationFile()
                 {
                     gateways.emplace_back(gateway4);
                     auto& gateway4route = config.map["Route"].emplace_back();
+                    gateway4route["Destination"].emplace_back("0.0.0.0/0");
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
 
                     std::string routingTableId =
                         std::to_string(generateRouteTableID(interfaceName()));
                     gateway4route["Table"].emplace_back(routingTableId);
-                    std::string routeAddressPrefix =
+                    std::string routeGatewayPrefix =
                         generateNetworkRoute(gateway4, prefixLength);
 
-                    // Adding Default route in main routing table with lower
-                    // route priority 10
-                    // These main routing table entries addresses direct
-                    // ethernet on link network routing.
-                    auto& routingPolicyDestination =
-                        config.map["Route"].emplace_back();
-                    routingPolicyDestination["Table"].emplace_back("main");
-                    routingPolicyDestination["Scope"].emplace_back("link");
-                    routingPolicyDestination["Destination"].emplace_back(
-                       routeAddressPrefix);
+                    auto& routingPolicyGatewayTo =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyGatewayTo["Table"].emplace_back(
+                        routingTableId);
+                    routingPolicyGatewayTo["Priority"].emplace_back("10");
+                    routingPolicyGatewayTo["To"].emplace_back(
+                        routeGatewayPrefix);
+
+                    auto& routingPolicyGatewayFrom =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingPolicyGatewayFrom["Table"].emplace_back(
+                        routingTableId);
+                    routingPolicyGatewayFrom["Priority"].emplace_back("10");
+                    routingPolicyGatewayFrom["From"].emplace_back(
+                        routeGatewayPrefix);
+
                     auto& routingMainPolicyTo =
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingMainPolicyTo["Table"].emplace_back("main");
-                    routingMainPolicyTo["Priority"].emplace_back("10");
-                    routingMainPolicyTo["To"].emplace_back(routeAddressPrefix);
+                    routingMainPolicyTo["Priority"].emplace_back("100");
+                    routingMainPolicyTo["To"].emplace_back(routeGatewayPrefix);
+
                     auto& routingMainPolicyFrom =
                         config.map["RoutingPolicyRule"].emplace_back();
                     routingMainPolicyFrom["Table"].emplace_back("main");
-                    routingMainPolicyFrom["Priority"].emplace_back("10");
-                    routingMainPolicyFrom["From"].emplace_back(routeAddressPrefix);
+                    routingMainPolicyFrom["Priority"].emplace_back("100");
+                    routingMainPolicyFrom["From"].emplace_back(
+                        routeGatewayPrefix);
 
-                    auto& routingPolicyTo =
-                        config.map["RoutingPolicyRule"].emplace_back();
-                    routingPolicyTo["Table"].emplace_back(routingTableId);
-                    routingPolicyTo["Priority"].emplace_back("100");
-                    routingPolicyTo["To"].emplace_back(routeAddressPrefix);
-                    auto& routingPolicyFrom =
-                        config.map["RoutingPolicyRule"].emplace_back();
-                    routingPolicyFrom["Table"].emplace_back(routingTableId);
-                    routingPolicyFrom["Priority"].emplace_back("100");
-                    routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
+                    for (const auto& addr : addrs)
+                    {
+                        if (originIsManuallyAssigned(addr.second->origin()))
+                        {
+                            std::stringstream ss(stdplus::toStr(addr.first));
+                            std::string address;
+                            std::getline(ss, address, '/');
+                            std::string routeAddressPrefix =
+                                generateNetworkRoute(address, prefixLength);
+
+                            if (!routeAddressPrefix.empty())
+                            {
+                                auto& routingPolicyDestination =
+                                    config.map["Route"].emplace_back();
+                                routingPolicyDestination["Table"].emplace_back(
+                                    routingTableId);
+                                routingPolicyDestination["Destination"]
+                                    .emplace_back(routeAddressPrefix);
+                                routingPolicyDestination["Scope"].emplace_back(
+                                    "link");
+                            }
+                        }
+                    }
                 }
             }
 
