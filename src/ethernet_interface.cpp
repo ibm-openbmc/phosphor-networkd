@@ -428,7 +428,13 @@ void EthernetInterface::addAddr(const AddressInfo& info)
     }
 
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-    if (info.scope == RT_SCOPE_LINK)
+    if (info.scope == RT_SCOPE_LINK &&
+        std::holds_alternative<stdplus::In6Addr>(info.ifaddr.getAddr()))
+    {
+        origin = IP::AddressOrigin::LinkLocal;
+    }
+    else if (info.scope == RT_SCOPE_LINK &&
+             std::holds_alternative<stdplus::In4Addr>(info.ifaddr.getAddr()))
     {
         try
         {
