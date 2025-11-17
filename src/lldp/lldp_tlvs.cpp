@@ -31,6 +31,7 @@ TLVs::TLVs(sdbusplus::bus_t& bus, const std::string& objPath) :
     TLVsIface::managementAddressIPv6("");
     TLVsIface::managementAddressMAC("");
     TLVsIface::managementVlanId(0);
+    TLVsIface::exchangeType(TLVsIface::LLDPExchangeType::Unknown);
 
     emit_object_added();
 }
@@ -48,6 +49,7 @@ void TLVs::resetToDefaults()
     TLVsIface::managementAddressIPv6("");
     TLVsIface::managementAddressMAC("");
     TLVsIface::managementVlanId(0);
+    TLVsIface::exchangeType(TLVsIface::LLDPExchangeType::Unknown);
 }
 
 void TLVs::setChassisId(const std::string& v)
@@ -78,6 +80,11 @@ void TLVs::setManagementAddressIPv4(const std::string& v)
 void TLVs::setManagementAddressIPv6(const std::string& v)
 {
     TLVsIface::managementAddressIPv6(v);
+}
+
+void TLVs::setExchangeType(TLVsIface::LLDPExchangeType type)
+{
+    TLVsIface::exchangeType(type);
 }
 
 std::string TLVs::chassisId(std::string)
@@ -132,6 +139,11 @@ std::string TLVs::managementAddressMAC(std::string)
 }
 
 uint16_t TLVs::managementVlanId(uint16_t)
+{
+    elog<NotAllowed>(Reason("Property update is not allowed"));
+}
+
+TLVsIface::LLDPExchangeType TLVs::exchangeType(TLVsIface::LLDPExchangeType)
 {
     elog<NotAllowed>(Reason("Property update is not allowed"));
 }

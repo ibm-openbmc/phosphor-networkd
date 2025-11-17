@@ -32,6 +32,7 @@ class TLVs : public TLVsIface
     void setSystemDescription(const std::string& v);
     void setManagementAddressIPv4(const std::string& v);
     void setManagementAddressIPv6(const std::string& v);
+    void setExchangeType(TLVsIface::LLDPExchangeType v);
 
     std::string chassisId(std::string) override;
     TLVsIface::IEEE802IdSubtype chassisIdSubtype(
@@ -47,6 +48,7 @@ class TLVs : public TLVsIface
     std::string managementAddressIPv6(std::string) override;
     std::string managementAddressMAC(std::string) override;
     uint16_t managementVlanId(uint16_t) override;
+    LLDPExchangeType exchangeType(TLVsIface::LLDPExchangeType) override;
 
     void resetToDefaults();
 };

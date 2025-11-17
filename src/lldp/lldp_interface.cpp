@@ -91,6 +91,7 @@ Interface::Interface(sdbusplus::bus_t& bus, Manager& manager,
 {
     // create transmit dbus object once
     transmit = std::make_unique<TLVs>(bus, objPath + "/transmit");
+    transmit->setExchangeType(TLVsIface::LLDPExchangeType::Transmit);
 
     bool enabled = parseLLDPEnabledFromConfig(ifname);
     SettingsIface::enableLLDP(enabled);
@@ -376,6 +377,7 @@ void Interface::updateOrCreateReceiveObj(
     try
     {
         auto tlvObj = std::make_unique<TLVs>(bus, path);
+        tlvObj->setExchangeType(TLVsIface::LLDPExchangeType::Receive);
         if (!chassisId.empty())
             tlvObj->setChassisId(chassisId);
         if (!portId.empty())
