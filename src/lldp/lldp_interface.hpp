@@ -1,5 +1,7 @@
 #pragma once
 
+#if ENABLE_LLDP
+
 #include "lldp_tlvs.hpp"
 
 #include <sdbusplus/server/object.hpp>
@@ -68,3 +70,4 @@ class Interface : public SettingsIface
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
+#endif // ENABLE_LLDP

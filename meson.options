@@ -36,4 +36,9 @@ option(
     type: 'boolean',
     description: 'Enable rbmc configuration on internal interface, assigns IP address using BMC position ',
 )
-option('lldp', type: 'boolean', description: 'Enable LLDP neighbor discovery')
+option(
+    'lldp',
+    type: 'boolean',
+    value: false,
+    description: 'Enable LLDP neighbor discovery',
+)
