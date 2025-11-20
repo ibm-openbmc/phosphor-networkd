@@ -1,3 +1,5 @@
+#if ENABLE_LLDP
+
 #include "lldp_config.h"
 
 #include "lldp_manager.hpp"
@@ -23,3 +25,5 @@ int main()
 
     return sdeventplus::utility::loopWithBus(event, bus);
 }
+
+#endif // ENABLE_LLDP
