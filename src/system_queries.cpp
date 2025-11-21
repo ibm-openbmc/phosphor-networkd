@@ -2,13 +2,18 @@
 
 #include "netlink.hpp"
 
+#include <arpa/inet.h>
 #include <fmt/format.h>
 #include <linux/ethtool.h>
+#include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
 #include <net/if.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <algorithm>
+#include <cstring>
 #include <optional>
 #include <phosphor-logging/log.hpp>
 #include <stdexcept>
@@ -132,6 +137,89 @@ void deleteIntf(unsigned idx)
             throw std::runtime_error(
                 fmt::format("Failed to delete `{}`: {}", idx, strerror(err)));
         });
+}
+
+bool deleteLinkLocalIPv4ViaNetlink(unsigned ifidx, const InAddrAny& ip)
+{
+    bool success = false;
+
+    std::visit(
+        [&](const auto& wrappedAddr) {
+            using T = std::decay_t<decltype(wrappedAddr)>;
+            if constexpr (std::is_same_v<T, in_addr>)
+            {
+                in_addr addr = static_cast<in_addr>(wrappedAddr);
+
+                if ((ntohl(addr.s_addr) & 0xFFFF0000) != 0xA9FE0000)
+                    return;
+
+                int sock = ::socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+                if (sock < 0)
+                {
+                    auto msg =
+                        fmt::format("Failed to open the NETLINK_ROUTE socket");
+                    log<level::ERR>(msg.c_str());
+                    return;
+                }
+
+                struct
+                {
+                    nlmsghdr nlh;
+                    ifaddrmsg ifa;
+                    char buf[256];
+                } req{};
+
+                req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(ifaddrmsg));
+                req.nlh.nlmsg_type = RTM_DELADDR;
+                req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+                req.ifa.ifa_family = AF_INET;
+                req.ifa.ifa_index = ifidx;
+                req.ifa.ifa_prefixlen = 32;
+
+                rtattr* rta = reinterpret_cast<rtattr*>(req.buf);
+                rta->rta_type = IFA_LOCAL;
+                rta->rta_len = RTA_LENGTH(sizeof(in_addr));
+                std::memcpy(RTA_DATA(rta), &addr, sizeof(in_addr));
+
+                req.nlh.nlmsg_len += rta->rta_len;
+
+                const ssize_t sent = ::send(sock, &req, req.nlh.nlmsg_len, 0);
+                if (sent != static_cast<ssize_t>(req.nlh.nlmsg_len))
+                {
+                    auto msg = fmt::format(
+                        "Failed to send netlink message for RTM_DELADDR");
+                    log<level::ERR>(msg.c_str());
+                    ::close(sock);
+                    return;
+                }
+
+                std::array<char, 4096> resp;
+                ssize_t len = ::recv(sock, resp.data(), resp.size(), 0);
+                ::close(sock);
+
+                if (len >= NLMSG_LENGTH(0))
+                {
+                    const nlmsghdr* hdr =
+                        reinterpret_cast<nlmsghdr*>(resp.data());
+                    if (hdr->nlmsg_type == NLMSG_ERROR)
+                    {
+                        const nlmsgerr* err =
+                            reinterpret_cast<nlmsgerr*>(NLMSG_DATA(hdr));
+                        if (err->error != 0)
+                        {
+                            std::ostringstream oss;
+                            oss << "Failed to delete link-local IP on ifidx "
+                                << ifidx << ": " << strerror(-err->error);
+                            throw std::runtime_error(oss.str());
+                        }
+                    }
+                }
+                success = true;
+            }
+        },
+        ip);
+
+    return success;
 }
 
 } // namespace phosphor::network::system
