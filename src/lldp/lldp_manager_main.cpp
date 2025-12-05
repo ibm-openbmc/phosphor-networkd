@@ -25,3 +25,5 @@ int main()
 
     return sdeventplus::utility::loopWithBus(event, bus);
 }
+
+#endif // ENABLE_LLDP
