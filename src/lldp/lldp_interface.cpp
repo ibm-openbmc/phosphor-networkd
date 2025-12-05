@@ -1,11 +1,13 @@
-#if ENABLE_LLDP
-
 #include "lldp_interface.hpp"
 
 #include "lldp_manager.hpp"
 
 #include <arpa/inet.h>
+
+#if ENABLE_LLDP
 #include <lldpctl.h>
+#endif
+
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -404,4 +406,3 @@ void Interface::updateOrCreateReceiveObj(
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP

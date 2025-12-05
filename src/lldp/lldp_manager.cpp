@@ -1,11 +1,13 @@
-#if ENABLE_LLDP
-
 #include "lldp_manager.hpp"
 
 #include "lldp_interface.hpp"
 
 #include <arpa/inet.h>
+
+#if ENABLE_LLDP
 #include <lldpctl.h>
+#endif
+
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -82,4 +84,3 @@ std::vector<std::string> Manager::getInterfaces()
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP
