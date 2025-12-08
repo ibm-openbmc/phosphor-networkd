@@ -1,5 +1,3 @@
-#if ENABLE_LLDP
-
 #include "lldp_manager.hpp"
 
 #include "lldp_interface.hpp"
@@ -82,4 +80,3 @@ std::vector<std::string> Manager::getInterfaces()
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP

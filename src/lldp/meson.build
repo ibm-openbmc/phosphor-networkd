@@ -2,7 +2,6 @@ lldp_default_busname = 'xyz.openbmc_project.LLDP'
 
 config = configuration_data()
 config.set_quoted('LLDP_DEFAULT_BUSNAME', lldp_default_busname)
-config.set('ENABLE_LLDP', get_option('lldp') ? 1 : 0)
 
 configure_file(output: 'lldp_config.h', configuration: config)
 

@@ -1,5 +1,3 @@
-#if ENABLE_LLDP
-
 #include "lldp_tlvs.hpp"
 
 #include <phosphor-logging/elog-errors.hpp>
@@ -153,4 +151,3 @@ TLVsIface::LLDPExchangeType TLVs::exchangeType(TLVsIface::LLDPExchangeType)
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP
