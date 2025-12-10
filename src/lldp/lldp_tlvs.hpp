@@ -1,7 +1,5 @@
 #pragma once
 
-#if ENABLE_LLDP
-
 #include <sdbusplus/server/object.hpp>
 #include <xyz/openbmc_project/Network/LLDP/TLVs/server.hpp>
 
@@ -57,4 +55,3 @@ class TLVs : public TLVsIface
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP

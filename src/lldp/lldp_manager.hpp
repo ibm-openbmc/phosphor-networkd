@@ -1,7 +1,5 @@
 #pragma once
 
-#if ENABLE_LLDP
-
 #include "lldp_interface.hpp"
 
 #include <sdbusplus/bus.hpp>
@@ -43,4 +41,3 @@ class Manager
 } // namespace lldp
 } // namespace network
 } // namespace phosphor
-#endif // ENABLE_LLDP
