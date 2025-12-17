@@ -30,4 +30,7 @@ void setIPAddress(std::string_view ifname, std::string_view ipAddress,
 
 void deleteIntf(unsigned idx);
 
+bool deleteLinkLocalIPv4ViaNetlink(unsigned ifidx,
+                                   const stdplus::SubnetAny& ip);
+
 } // namespace phosphor::network::system
