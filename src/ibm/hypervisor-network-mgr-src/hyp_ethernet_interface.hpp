@@ -153,11 +153,8 @@ class HypEthInterface : public CreateIface
         try
         {
             auto ip = stdplus::fromStr<Addr>(gw);
-            if (ip == Addr{})
-            {
-                throw std::invalid_argument("Empty gateway");
-            }
-            if (!validIntfIP(ip))
+            // Allow 0.0.0.0 as a valid gateway for static IP configuration
+            if (!validIntfIP(ip) && ip != Addr{})
             {
                 throw std::invalid_argument("Invalid unicast");
             }
