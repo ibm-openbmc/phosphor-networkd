@@ -440,9 +440,62 @@ void EthernetInterface::addAddr(const AddressInfo& info)
         origin = IP::AddressOrigin::SLAAC;
     }
 #ifdef LINK_LOCAL_AUTOCONFIGURATION
-    if (info.scope == RT_SCOPE_LINK)
+    if (info.scope == RT_SCOPE_LINK &&
+        std::holds_alternative<in6_addr>(info.ifaddr.getAddr()))
     {
         origin = IP::AddressOrigin::LinkLocal;
+    }
+    else if (info.scope == RT_SCOPE_LINK &&
+             std::holds_alternative<in_addr>(info.ifaddr.getAddr()))
+    {
+        try
+        {
+            auto obj = fmt::format("/org/freedesktop/network1/link/_3{}",
+                                   info.ifidx);
+            auto req = bus.get().new_method_call(
+                "org.freedesktop.network1", obj.c_str(),
+                "org.freedesktop.DBus.Properties", "GetAll");
+            req.append("org.freedesktop.network1.Link");
+            auto rsp = req.call();
+            std::map<std::string, std::variant<std::string>> props;
+            rsp.read(props);
+            auto operationalStateIt = props.find("OperationalState");
+            auto ipv4addressStateIt = props.find("IPv4AddressState");
+
+            if ((operationalStateIt != props.end()) &&
+                (ipv4addressStateIt != props.end()))
+            {
+                const std::string& opState =
+                    std::get<std::string>(operationalStateIt->second);
+                const std::string& ipv4State =
+                    std::get<std::string>(ipv4addressStateIt->second);
+                if ((opState == "routable") && (ipv4State == "routable"))
+                {
+                    bool status = system::deleteLinkLocalIPv4ViaNetlink(
+                        info.ifidx, info.ifaddr.getAddr());
+                    if (status)
+                    {
+                        log<level::ERR>("Deleted IPv4 linklocal address");
+                    }
+                    else
+                    {
+                        log<level::ERR>(
+                            "Failed to delete IPv4 Linklocal address");
+                    }
+                }
+                else
+                {
+                    origin = IP::AddressOrigin::LinkLocal;
+                }
+            }
+        }
+        catch (const std::exception& e)
+        {
+            auto msg = fmt::format("Failed to read link OperationalState and "
+                                   "IPv4AddressState : {}\n",
+                                   e.what());
+            log<level::ERR>(msg.c_str());
+        }
     }
 #endif
 
