@@ -913,10 +913,6 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
                 validateGateway<stdplus::In4Addr>(gateway);
             }
         }
-        else
-        {
-            throw std::invalid_argument("Empty gateway");
-        }
     }
     catch (const std::exception& e)
     {
