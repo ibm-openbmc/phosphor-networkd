@@ -1,0 +1,7 @@
+[Match]
+Name=eth2
+Name=!lo
+Type=ether
+[Network]
+DHCP=false
+LinkLocalAddressing=no

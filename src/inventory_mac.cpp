@@ -40,6 +40,8 @@ constexpr auto invNetworkIntf =
 #ifdef ENABLE_RBMC_CONFIG
 constexpr auto invPositionIntf =
     "xyz.openbmc_project.Inventory.Decorator.Position";
+constexpr auto systemPath = "/xyz/openbmc_project/inventory/system";
+constexpr auto inventoryMgr = "xyz.openbmc_project.Inventory.Manager";
 #endif
 constexpr auto invRoot = "/xyz/openbmc_project/inventory";
 constexpr auto mapperBus = "xyz.openbmc_project.ObjectMapper";
@@ -83,61 +85,6 @@ void setFirstBootMACOnInterface(const std::string& intf, const std::string& mac)
         }
     }
 }
-
-#ifdef ENABLE_RBMC_CONFIG
-uint32_t getPositionFromInventory(sdbusplus::bus_t& bus)
-{
-    std::vector<DbusInterface> interfaces;
-    interfaces.emplace_back(invPositionIntf);
-
-    auto depth = 0;
-    auto mapperCall =
-        bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetSubTree");
-
-    mapperCall.append(invRoot, depth, interfaces);
-
-    auto mapperReply = bus.call(mapperCall);
-    if (mapperReply.is_method_error())
-    {
-        lg2::error("Error in mapper call");
-        elog<InternalFailure>();
-    }
-
-    ObjectTree objectTree;
-    mapperReply.read(objectTree);
-
-    if (objectTree.empty())
-    {
-        lg2::error("No Object has implemented the interface {NET_INTF}",
-                   "NET_INTF", invPositionIntf);
-        elog<InternalFailure>();
-    }
-
-    DbusObjectPath objPath;
-    DbusService service;
-
-    objPath = objectTree.begin()->first;
-    service = objectTree.begin()->second.begin()->first;
-
-    auto method = bus.new_method_call(service.c_str(), objPath.c_str(),
-                                      propIntf, methodGet);
-
-    method.append(invPositionIntf, "Position");
-
-    auto reply = bus.call(method);
-    if (reply.is_method_error())
-    {
-        lg2::error(
-            "Failed to get MACAddress for path {DBUS_PATH} interface {DBUS_INTF}",
-            "DBUS_PATH", objPath, "DBUS_INTF", invPositionIntf);
-        elog<InternalFailure>();
-    }
-
-    std::variant<uint32_t> value;
-    reply.read(value);
-    return std::get<uint32_t>(value);
-}
-#endif
 
 stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
                                     const std::string& intfName)
@@ -269,55 +216,108 @@ bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
 }
 
 #ifdef ENABLE_RBMC_CONFIG
-void setIPAddressOnInternalInterface(const std::string& intf,
-                                     const uint32_t& bmcPosition)
-{
-    for (const auto& interface : manager->interfaces)
-    {
-        if (interface.first == intf)
-        {
-            if (bmcPosition == 1)
-            {
-                auto obj = interface.second->ip(IP::Protocol::IPv4,
-                                                "9.6.28.101", 24, "");
-            }
-            else if (bmcPosition == 0)
-            {
-                auto obj = interface.second->ip(IP::Protocol::IPv4,
-                                                "9.6.28.100", 24, "");
-            }
-            else
-            {
-                lg2::info("Invalid BMC position");
-            }
-        }
-    }
-}
 
-bool setIPaddressUsingPosition(sdbusplus::bus_t& bus)
+uint64_t getPositionFromInventory(sdbusplus::bus_t& bus)
 {
     try
     {
-        auto position = getPositionFromInventory(bus);
-        if ((position == 0) || (position == 1))
-        {
-            lg2::info("BMC Position {NET_POS} in Inventory", "NET_POS",
-                      position);
-            setIPAddressOnInternalInterface("eth1", position);
-        }
-        else
-        {
-            lg2::info("Nothing is present in Inventory");
-            return false;
-        }
+        auto method =
+            bus.new_method_call(inventoryMgr, systemPath, propIntf, methodGet);
+        method.append(invPositionIntf, "Position");
+
+        auto reply = bus.call(method);
+
+        auto value = reply.unpack<std::variant<uint64_t>>();
+        uint64_t position = std::get<uint64_t>(value);
+
+        lg2::info("BMC Position read successfully: {POSITION}", "POSITION",
+                  position);
+        return position;
+    }
+    catch (const sdbusplus::exception::SdBusError& e)
+    {
+        lg2::error("D-Bus error reading Position: {ERROR}", "ERROR", e.what());
+        return 0;
     }
     catch (const std::exception& e)
     {
-        lg2::error("Exception occurred during getting of BMC position "
-                   "address from Inventory");
+        lg2::error("Exception reading Position: {ERROR}", "ERROR", e.what());
+        return 0;
+    }
+}
+
+bool interfaceExists(const std::string& intfName)
+{
+    for (const auto& interface : manager->interfaces)
+    {
+        if (interface.first == intfName)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
+{
+    try
+    {
+        uint64_t position = getPositionFromInventory(bus);
+
+        std::string targetInterface;
+        if (interfaceExists("eth2"))
+        {
+            targetInterface = "eth2";
+            lg2::info("eth2 interface found, will assign IP to eth2");
+        }
+        else if (interfaceExists("eth1"))
+        {
+            targetInterface = "eth1";
+            lg2::info("eth2 not found, will assign IP to eth1 instead");
+        }
+        else
+        {
+            lg2::error("Neither eth2 nor eth1 interface found");
+            return false;
+        }
+
+        std::string baseIP = "9.6.28.";
+        std::string ipAddress = baseIP + std::to_string(10 + position);
+        uint8_t prefixLength = 24;
+
+        lg2::info(
+            "Assigning IP {IP_ADDR}/{PREFIX} to {NET_INTF} based on position {POS}",
+            "IP_ADDR", ipAddress, "PREFIX", prefixLength, "NET_INTF",
+            targetInterface, "POS", position);
+
+        bool ipAssigned = false;
+        for (const auto& interface : manager->interfaces)
+        {
+            if (interface.first == targetInterface)
+            {
+                interface.second->ip(IP::Protocol::IPv4, ipAddress,
+                                     prefixLength, "");
+                lg2::info("Successfully assigned IP address to {NET_INTF}",
+                          "NET_INTF", targetInterface);
+                ipAssigned = true;
+                break;
+            }
+        }
+
+        if (!ipAssigned)
+        {
+            lg2::error("Failed to find interface {NET_INTF} in manager",
+                       "NET_INTF", targetInterface);
+            return false;
+        }
+
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to assign IP address: {ERROR}", "ERROR", e.what());
         return false;
     }
-    return true;
 }
 
 void registerBMCPositionPropertyChangeSignal(sdbusplus::bus_t& bus)
@@ -341,9 +341,7 @@ void registerBMCPositionPropertyChangeSignal(sdbusplus::bus_t& bus)
                     if (property.first == "Position")
                     {
                         lg2::info("Position value changed");
-                        // TODO: Eth1 interface modeled as peer to peer
-                        // connected ethernet interface for rbmc redundancy
-                        setIPaddressUsingPosition(bus);
+                        assignIPBasedOnPosition(bus);
                         break;
                     }
                 }
@@ -383,9 +381,7 @@ void registerBMCPositionInterfacesAddedSignal(sdbusplus::bus_t& bus)
                     if (property.first == "Position")
                     {
                         lg2::info("Position interface added");
-                        // TODO: Eth1 interface modeled as peer to peer
-                        // connected ethernet interface for rbmc redundancy
-                        setIPaddressUsingPosition(bus);
+                        assignIPBasedOnPosition(bus);
                         break;
                     }
                 }
@@ -548,7 +544,7 @@ void watchBMCPosition(sdbusplus::bus_t& bus)
     registerBMCPositionInterfacesAddedSignal(bus);
     registerBMCPositionPropertyChangeSignal(bus);
 
-    if (setIPaddressUsingPosition(bus))
+    if (assignIPBasedOnPosition(bus))
     {
         BMCPositionMatch = nullptr;
         BMCPositionInterfaceMatch = nullptr;
