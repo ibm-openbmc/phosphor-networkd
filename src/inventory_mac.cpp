@@ -282,7 +282,7 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
         }
 
         std::string baseIP = "9.6.28.";
-        std::string ipAddress = baseIP + std::to_string(10 + position);
+        std::string ipAddress = baseIP + std::to_string(100 + position);
         uint8_t prefixLength = 24;
 
         lg2::info(
@@ -295,6 +295,18 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
         {
             if (interface.first == targetInterface)
             {
+                try
+                {
+                    interface.second->deleteAll();
+                    lg2::info("Successfully cleared all IPs from {NET_INTF}",
+                              "NET_INTF", targetInterface);
+                }
+                catch (const std::exception& e)
+                {
+                    lg2::warning("Failed to delete all IPs: {ERROR}", "ERROR",
+                                 e.what());
+                }
+
                 interface.second->ip(IP::Protocol::IPv4, ipAddress,
                                      prefixLength, "");
                 lg2::info("Successfully assigned IP address to {NET_INTF}",
