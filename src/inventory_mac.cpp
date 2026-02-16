@@ -13,6 +13,7 @@
 #include <stdplus/str/maps.hpp>
 #include <xyz/openbmc_project/Common/error.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -83,6 +84,52 @@ void setFirstBootMACOnInterface(const std::string& intf, const std::string& mac)
                 lg2::info("MAC is Not Set on ethernet Interface");
             }
         }
+    }
+}
+
+std::optional<stdplus::EtherAddr> getMACFromSysfs(const std::string& intfName)
+{
+    try
+    {
+        std::string sysfsPath = "/sys/class/net/" + intfName + "/address";
+        std::ifstream macFile(sysfsPath);
+
+        if (!macFile.is_open())
+        {
+            lg2::error("Failed to open sysfs path {SYSFS_PATH}", "SYSFS_PATH",
+                       sysfsPath);
+            return std::nullopt;
+        }
+
+        std::string macAddress;
+        std::getline(macFile, macAddress);
+        macFile.close();
+
+        // Remove any trailing whitespace or newline
+        macAddress.erase(
+            std::remove_if(macAddress.begin(), macAddress.end(),
+                           [](unsigned char c) { return std::isspace(c); }),
+            macAddress.end());
+
+        if (macAddress.empty())
+        {
+            lg2::error("Empty MAC address read from sysfs for {NET_INTF}",
+                       "NET_INTF", intfName);
+            return std::nullopt;
+        }
+
+        lg2::info(
+            "Read MAC address {NET_MAC} from sysfs for interface {NET_INTF}",
+            "NET_MAC", macAddress, "NET_INTF", intfName);
+
+        return stdplus::fromStr<stdplus::EtherAddr>(macAddress);
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error(
+            "Exception occurred while reading MAC from sysfs for {NET_INTF}: {ERROR}",
+            "NET_INTF", intfName, "ERROR", e.what());
+        return std::nullopt;
     }
 }
 
@@ -171,48 +218,84 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
 
 bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
 {
+    stdplus::EtherAddr macAddress{};
+    bool macFromInventory = false;
+
     try
     {
         auto inventoryMAC = getfromInventory(bus, intfname);
         if (inventoryMAC != stdplus::EtherAddr{})
         {
-            auto macStr = stdplus::toStr(inventoryMAC);
+            macAddress = inventoryMAC;
+            macFromInventory = true;
             lg2::info(
-                "Mac Address {NET_MAC} in Inventory on Interface {NET_INTF}",
-                "NET_MAC", macStr, "NET_INTF", intfname);
-            setFirstBootMACOnInterface(intfname, macStr);
-            first_boot_status.push_back(intfname);
-            bool status = true;
-            for (const auto& keys : configJson.items())
-            {
-                if (!(std::find(first_boot_status.begin(),
-                                first_boot_status.end(), keys.key()) !=
-                      first_boot_status.end()))
-                {
-                    lg2::info("Interface {NET_INTF} MAC is NOT set from VPD",
-                              "NET_INTF", keys.key());
-                    status = false;
-                }
-            }
-            if (status)
-            {
-                lg2::info("Removing the match for ethernet interfaces");
-                EthInterfaceMatch = nullptr;
-            }
+                "Mac Address {NET_MAC} read from Inventory for Interface {NET_INTF}",
+                "NET_MAC", stdplus::toStr(macAddress), "NET_INTF", intfname);
         }
         else
         {
-            lg2::info("Nothing is present in Inventory");
-            return false;
+            lg2::info("Nothing is present in Inventory for {NET_INTF}",
+                      "NET_INTF", intfname);
         }
     }
     catch (const std::exception& e)
     {
-        lg2::error("Exception occurred during getting of MAC "
-                   "address from Inventory");
-        return false;
+        lg2::error(
+            "Exception occurred during getting MAC address from Inventory for {NET_INTF}: {ERROR}",
+            "NET_INTF", intfname, "ERROR", e.what());
     }
-    return true;
+
+    // If inventory read failed or returned empty MAC, try reading from sysfs
+    if (!macFromInventory || macAddress == stdplus::EtherAddr{})
+    {
+        lg2::info(
+            "Attempting to read MAC address from sysfs for interface {NET_INTF}",
+            "NET_INTF", intfname);
+
+        auto sysfsMAC = getMACFromSysfs(intfname);
+        if (sysfsMAC.has_value())
+        {
+            macAddress = sysfsMAC.value();
+            lg2::info(
+                "Mac Address {NET_MAC} read from sysfs for Interface {NET_INTF}",
+                "NET_MAC", stdplus::toStr(macAddress), "NET_INTF", intfname);
+        }
+        else
+        {
+            lg2::error(
+                "Failed to read MAC address from both Inventory and sysfs for {NET_INTF}",
+                "NET_INTF", intfname);
+            return false;
+        }
+    }
+
+    // Set the MAC address on the interface
+    if (macAddress != stdplus::EtherAddr{})
+    {
+        auto macStr = stdplus::toStr(macAddress);
+        setFirstBootMACOnInterface(intfname, macStr);
+        first_boot_status.push_back(intfname);
+
+        bool status = true;
+        for (const auto& keys : configJson.items())
+        {
+            if (!(std::find(first_boot_status.begin(), first_boot_status.end(),
+                            keys.key()) != first_boot_status.end()))
+            {
+                lg2::info("Interface {NET_INTF} MAC is NOT set from VPD",
+                          "NET_INTF", keys.key());
+                status = false;
+            }
+        }
+        if (status)
+        {
+            lg2::info("Removing the match for ethernet interfaces");
+            EthInterfaceMatch = nullptr;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 #ifdef ENABLE_RBMC_CONFIG
