@@ -24,6 +24,18 @@ class TLVs : public TLVsIface
     TLVs& operator=(const TLVs&) = delete;
 
     TLVs(sdbusplus::bus_t& bus, const std::string& objPath);
+    TLVs(sdbusplus::bus_t& bus, const std::string& objPath,
+         const std::string& chassisIdIn,
+         TLVsIface::IEEE802IdSubtype chassisIdSubTypeIn,
+         const std::string& portIdIn,
+         TLVsIface::IEEE802IdSubtype portIdSubtypeIn,
+         const std::string& systemNameIn,
+         const std::string& systemDescriptionIn,
+         std::vector<TLVsIface::SystemCapabilities> systemCapabilitiesIn,
+         const std::string& managementAddressIPv4In,
+         const std::string& managementAddressIPv6In,
+         const std::string& managementAddressMACIn, uint16_t managementVlanIdIn,
+         LLDPExchangeType exchangeTypeIn);
     ~TLVs() = default;
 
     void setChassisId(const std::string& v);
