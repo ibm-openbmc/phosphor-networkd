@@ -97,11 +97,14 @@ Interface::Interface(sdbusplus::bus_t& bus, Manager& manager,
     SettingsIface::enableLLDP(enabled);
     refreshInterface();
 
-    // Setup periodic refresh timer (every 60 seconds)
+    // Setup periodic refresh timer
+    std::chrono::seconds interval =
+        (ifname == "eth2") ? std::chrono::seconds(10)
+                           : std::chrono::seconds(60);
+
     refreshTimer = std::make_unique<TimerType>(
         manager.getEventLoop(),
-        [this](TimerType&) { this->refreshInterface(); },
-        std::chrono::seconds(60));
+        [this](TimerType&) { this->refreshInterface(); }, interval);
 
     refreshTimer->setEnabled(true);
     this->emit_object_added();
@@ -263,6 +266,22 @@ void Interface::refreshInterface()
             const char* sysdesc =
                 lldpctl_atom_get_str(neigh, lldpctl_k_chassis_descr);
 
+            std::string mgmtMac;
+            const char* portSubtypeStr =
+                lldpctl_atom_get_str(neigh, lldpctl_k_port_id_subtype);
+            if (portSubtypeStr && std::string_view(portSubtypeStr) == "mac")
+            {
+                mgmtMac = portid ? portid : "";
+            }
+
+            const char* chassisSubtypeStr =
+                lldpctl_atom_get_str(neigh, lldpctl_k_chassis_id_subtype);
+            if (mgmtMac.empty() && chassisSubtypeStr &&
+                std::string_view(chassisSubtypeStr) == "mac")
+            {
+                mgmtMac = chassis ? chassis : "";
+            }
+
             std::string mgmtV4;
             std::string mgmtV6;
             lldpctl_atom_t* mgmts =
@@ -316,7 +335,8 @@ void Interface::refreshInterface()
                 chassis ? std::string(chassis) : std::string(),
                 portid ? std::string(portid) : std::string(),
                 sysname ? std::string(sysname) : std::string(),
-                sysdesc ? std::string(sysdesc) : std::string(), mgmtV4, mgmtV6);
+                sysdesc ? std::string(sysdesc) : std::string(), mgmtV4, mgmtV6,
+                mgmtMac);
         }
 
         lldpctl_atom_dec_ref(neighbors);
@@ -341,32 +361,46 @@ void Interface::refreshInterface()
 void Interface::updateOrCreateReceiveObj(
     const std::string& chassisId, const std::string& portId,
     const std::string& sysName, const std::string& sysDesc,
-    const std::string& mgmtIPv4, const std::string& mgmtIPv6)
+    const std::string& mgmtIPv4, const std::string& mgmtIPv6,
+    const std::string& mgmtMac)
 {
-    bool changed = false;
+    bool neighborChanged = false;
     if (receive)
     {
         TLVs& tlv = *receive;
 
         // Check if any TLV value from the current lldp packet
         // is different from what is on dbus
-        changed = (tlv.TLVsIface::chassisId() != chassisId) ||
-                  (tlv.TLVsIface::portId() != portId) ||
-                  (tlv.TLVsIface::systemName() != sysName) ||
-                  (tlv.TLVsIface::systemDescription() != sysDesc) ||
-                  (tlv.TLVsIface::managementAddressIPv4() != mgmtIPv4) ||
-                  (tlv.TLVsIface::managementAddressIPv6() != mgmtIPv6);
+        neighborChanged =
+            (tlv.TLVsIface::chassisId() != chassisId) ||
+            (tlv.TLVsIface::portId() != portId) ||
+            (tlv.TLVsIface::managementAddressIPv4() != mgmtIPv4) ||
+            (tlv.TLVsIface::managementAddressIPv6() != mgmtIPv6) ||
+            (tlv.TLVsIface::managementAddressMAC() != mgmtMac);
 
-        if (!changed)
+        if (neighborChanged)
         {
+            // If TLV values are changed, remove existing receive object before
+            // recreating
+            lg2::info(
+                "Neighbor TLV changed on {IF}. Removing existing \"receive\" object.",
+                "IF", ifname);
+            receive.reset();
+        }
+        else
+        {
+            // Check if there are any changes in other property values
+            // If yes, update the current receive object
+            bool otherPropChanged =
+                (tlv.TLVsIface::systemName() != sysName) ||
+                (tlv.TLVsIface::systemDescription() != sysDesc);
+            if (otherPropChanged)
+            {
+                tlv.setSystemName(sysName);
+                tlv.setSystemDescription(sysDesc);
+            }
             return;
         }
-
-        // If changed, remove existing receive object before recreating
-        lg2::info(
-            "Neighbor TLV changed on {IF}. Removing existing \"receive\" object.",
-            "IF", ifname);
-        receive.reset();
     }
 
     std::string path = objPath + "/receive";
@@ -376,20 +410,16 @@ void Interface::updateOrCreateReceiveObj(
 
     try
     {
-        auto tlvObj = std::make_unique<TLVs>(bus, path);
-        tlvObj->setExchangeType(TLVsIface::LLDPExchangeType::Receive);
-        if (!chassisId.empty())
-            tlvObj->setChassisId(chassisId);
-        if (!portId.empty())
-            tlvObj->setPortId(portId);
-        if (!sysName.empty())
-            tlvObj->setSystemName(sysName);
-        if (!sysDesc.empty())
-            tlvObj->setSystemDescription(sysDesc);
-        if (!mgmtIPv4.empty())
-            tlvObj->setManagementAddressIPv4(mgmtIPv4);
-        if (!mgmtIPv6.empty())
-            tlvObj->setManagementAddressIPv6(mgmtIPv6);
+        auto tlvObj = std::make_unique<TLVs>(
+            bus, path, chassisId.empty() ? "" : chassisId,
+            TLVsIface::IEEE802IdSubtype::NotTransmitted,
+            portId.empty() ? "" : portId,
+            TLVsIface::IEEE802IdSubtype::NotTransmitted,
+            sysName.empty() ? "" : sysName, sysDesc.empty() ? "" : sysDesc,
+            std::vector<TLVsIface::SystemCapabilities>(),
+            mgmtIPv4.empty() ? "" : mgmtIPv4, mgmtIPv6.empty() ? "" : mgmtIPv6,
+            mgmtMac.empty() ? "" : mgmtMac, 0,
+            TLVsIface::LLDPExchangeType::Receive);
         receive = std::move(tlvObj);
     }
     catch (const std::exception& e)

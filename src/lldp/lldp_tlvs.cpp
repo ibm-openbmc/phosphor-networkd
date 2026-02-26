@@ -36,6 +36,35 @@ TLVs::TLVs(sdbusplus::bus_t& bus, const std::string& objPath) :
     emit_object_added();
 }
 
+TLVs::TLVs(
+    sdbusplus::bus_t& bus, const std::string& objPath,
+    const std::string& chassisIdIn,
+    TLVsIface::IEEE802IdSubtype chassisIdSubTypeIn, const std::string& portIdIn,
+    TLVsIface::IEEE802IdSubtype portIdSubtypeIn,
+    const std::string& systemNameIn, const std::string& systemDescriptionIn,
+    std::vector<TLVsIface::SystemCapabilities> systemCapabilitiesIn,
+    const std::string& managementAddressIPv4In,
+    const std::string& managementAddressIPv6In,
+    const std::string& managementAddressMACIn, uint16_t managementVlanIdIn,
+    LLDPExchangeType exchangeTypeIn) :
+    TLVsIface(bus, objPath.c_str(), TLVsIface::action::defer_emit)
+{
+    TLVsIface::chassisId(chassisIdIn);
+    TLVsIface::chassisIdSubtype(chassisIdSubTypeIn);
+    TLVsIface::portId(portIdIn);
+    TLVsIface::portIdSubtype(portIdSubtypeIn);
+    TLVsIface::systemName(systemNameIn);
+    TLVsIface::systemDescription(systemDescriptionIn);
+    TLVsIface::systemCapabilities(systemCapabilitiesIn);
+    TLVsIface::managementAddressIPv4(managementAddressIPv4In);
+    TLVsIface::managementAddressIPv6(managementAddressIPv6In);
+    TLVsIface::managementAddressMAC(managementAddressMACIn);
+    TLVsIface::managementVlanId(managementVlanIdIn);
+    TLVsIface::exchangeType(exchangeTypeIn);
+
+    emit_object_added();
+}
+
 void TLVs::resetToDefaults()
 {
     TLVsIface::chassisId("");
