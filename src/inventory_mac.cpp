@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -217,8 +218,44 @@ bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
 
 #ifdef ENABLE_RBMC_CONFIG
 
-uint64_t getPositionFromInventory(sdbusplus::bus_t& bus)
+static std::optional<uint64_t> readPositionFromFile(
+    const std::string& positionFilePath)
 {
+    if (!std::filesystem::exists(positionFilePath))
+    {
+        lg2::error("Position file {FILE_PATH} does not exist", "FILE_PATH",
+                   positionFilePath);
+        return std::nullopt;
+    }
+
+    std::ifstream posFile(positionFilePath);
+    if (!posFile.is_open())
+    {
+        lg2::error("Failed to open position file {FILE_PATH}", "FILE_PATH",
+                   positionFilePath);
+        return std::nullopt;
+    }
+
+    uint64_t filePosition = 0;
+    posFile >> filePosition;
+    posFile.close();
+
+    if (filePosition > 0 && filePosition != UINT64_MAX)
+    {
+        lg2::info("Using position {POSITION} from file instead of D-Bus",
+                  "POSITION", filePosition);
+        return filePosition;
+    }
+
+    lg2::error("Position in file is also invalid: {POSITION}", "POSITION",
+               filePosition);
+    return std::nullopt;
+}
+
+std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
+{
+    constexpr auto positionFilePath = "/run/openbmc/bmc_position";
+
     try
     {
         auto method =
@@ -230,6 +267,11 @@ uint64_t getPositionFromInventory(sdbusplus::bus_t& bus)
         auto value = reply.unpack<std::variant<uint64_t>>();
         uint64_t position = std::get<uint64_t>(value);
 
+        if (position == 0 || position == UINT64_MAX)
+        {
+            return readPositionFromFile(positionFilePath);
+        }
+
         lg2::info("BMC Position read successfully: {POSITION}", "POSITION",
                   position);
         return position;
@@ -237,12 +279,12 @@ uint64_t getPositionFromInventory(sdbusplus::bus_t& bus)
     catch (const sdbusplus::exception::SdBusError& e)
     {
         lg2::error("D-Bus error reading Position: {ERROR}", "ERROR", e.what());
-        return 0;
+        return std::nullopt;
     }
     catch (const std::exception& e)
     {
         lg2::error("Exception reading Position: {ERROR}", "ERROR", e.what());
-        return 0;
+        return std::nullopt;
     }
 }
 
@@ -262,7 +304,15 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
 {
     try
     {
-        uint64_t position = getPositionFromInventory(bus);
+        auto positionOpt = getPositionFromInventory(bus);
+
+        if (!positionOpt.has_value())
+        {
+            lg2::info("Position value not available yet, waiting for signal");
+            return false;
+        }
+
+        uint64_t position = positionOpt.value();
 
         std::string targetInterface;
         if (interfaceExists("eth2"))
@@ -406,7 +456,7 @@ void registerBMCPositionInterfacesAddedSignal(sdbusplus::bus_t& bus)
         bus,
         "interface='org.freedesktop.DBus.ObjectManager',type='signal',"
         "member='InterfacesAdded',path='/xyz/openbmc_project/"
-        "inventory/system'",
+        "inventory'",
         callback);
 }
 #endif
@@ -558,8 +608,12 @@ void watchBMCPosition(sdbusplus::bus_t& bus)
 
     if (assignIPBasedOnPosition(bus))
     {
-        BMCPositionMatch = nullptr;
-        BMCPositionInterfaceMatch = nullptr;
+        lg2::info("Position read successfully and IP assigned");
+    }
+    else
+    {
+        lg2::info(
+            "Position not available yet, signal matchers will wait for Position property");
     }
 }
 #endif
