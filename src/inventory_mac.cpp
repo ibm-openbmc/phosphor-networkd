@@ -218,9 +218,9 @@ bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
 
 #ifdef ENABLE_RBMC_CONFIG
 
-static std::optional<uint64_t> readPositionFromFile(
-    const std::string& positionFilePath)
+static std::optional<uint64_t> readPositionFromFile()
 {
+    constexpr auto positionFilePath = "/run/openbmc/bmc_position";
     if (!std::filesystem::exists(positionFilePath))
     {
         lg2::error("Position file {FILE_PATH} does not exist", "FILE_PATH",
@@ -240,13 +240,12 @@ static std::optional<uint64_t> readPositionFromFile(
     posFile >> filePosition;
     posFile.close();
 
-    if (filePosition > 0 && filePosition != UINT64_MAX)
+    if (filePosition == 0 || filePosition == 1)
     {
         lg2::info("Using position {POSITION} from file instead of D-Bus",
                   "POSITION", filePosition);
         return filePosition;
     }
-
     lg2::error("Position in file is also invalid: {POSITION}", "POSITION",
                filePosition);
     return std::nullopt;
@@ -254,8 +253,6 @@ static std::optional<uint64_t> readPositionFromFile(
 
 std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
 {
-    constexpr auto positionFilePath = "/run/openbmc/bmc_position";
-
     try
     {
         auto method =
@@ -267,14 +264,13 @@ std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
         auto value = reply.unpack<std::variant<uint64_t>>();
         uint64_t position = std::get<uint64_t>(value);
 
-        if (position == 0 || position == UINT64_MAX)
+        if (position == 0 || position == 1)
         {
-            return readPositionFromFile(positionFilePath);
+            lg2::info("BMC Position read successfully: {POSITION}", "POSITION",
+                      position);
+            return position;
         }
-
-        lg2::info("BMC Position read successfully: {POSITION}", "POSITION",
-                  position);
-        return position;
+        return std::nullopt;
     }
     catch (const sdbusplus::exception::SdBusError& e)
     {
@@ -306,12 +302,14 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
     {
         auto positionOpt = getPositionFromInventory(bus);
 
-        if (!positionOpt.has_value())
+        if (!positionOpt)
         {
-            lg2::info("Position value not available yet, waiting for signal");
+            positionOpt = readPositionFromFile();
+        }
+        if (!positionOpt)
+        {
             return false;
         }
-
         uint64_t position = positionOpt.value();
 
         std::string targetInterface;
