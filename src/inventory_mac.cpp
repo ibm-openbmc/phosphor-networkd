@@ -236,11 +236,11 @@ static std::optional<uint64_t> readPositionFromFile(
         return std::nullopt;
     }
 
-    uint64_t filePosition = 0;
+    uint64_t filePosition = UINT64_MAX;
     posFile >> filePosition;
     posFile.close();
 
-    if (filePosition > 0 && filePosition != UINT64_MAX)
+    if (filePosition == 0 || filePosition == 1)
     {
         lg2::info("Using position {POSITION} from file instead of D-Bus",
                   "POSITION", filePosition);
@@ -267,8 +267,9 @@ std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
         auto value = reply.unpack<std::variant<uint64_t>>();
         uint64_t position = std::get<uint64_t>(value);
 
-        if (position == 0 || position == UINT64_MAX)
+        if (position != 0 || position != 1)
         {
+            lg2::info("Attempting to read BMC Position from file");
             return readPositionFromFile(positionFilePath);
         }
 
