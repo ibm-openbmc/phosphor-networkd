@@ -19,6 +19,10 @@ conf_data.set('SYNC_MAC_FROM_INVENTORY', get_option('sync-mac'))
 conf_data.set('PERSIST_MAC', get_option('persist-mac'))
 conf_data.set10('FORCE_SYNC_MAC_FROM_INVENTORY', get_option('force-sync-mac'))
 conf_data.set('ENABLE_RBMC_CONFIG', get_option('enable-rbmc-config'))
+conf_data.set(
+    'ENABLE_SKIBOARDS_MAC_PATH',
+    get_option('enable-skiboards-mac-path'),
+)
 
 sdbusplus_dep = dependency('sdbusplus')
 sdbusplusplus_prog = find_program('sdbus++', native: true)
