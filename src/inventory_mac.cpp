@@ -327,8 +327,9 @@ std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
 
         auto reply = bus.call(method);
 
-        auto value = reply.unpack<std::variant<uint64_t>>();
-        uint64_t position = std::get<uint64_t>(value);
+        auto value = reply.unpack<std::variant<uint32_t, uint64_t>>();
+        uint64_t position =
+            std::visit([](auto v) { return static_cast<uint64_t>(v); }, value);
 
         if (position == 0 || position == 1)
         {
