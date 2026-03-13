@@ -9,11 +9,10 @@
 #include <netlink/netlink.h>
 #include <unistd.h>
 
-#include <iostream>
-#include <memory>
+#include <phosphor-logging/lg2.hpp>
+
 #include <optional>
 #include <span>
-#include <sstream>
 #include <system_error>
 #include <vector>
 
@@ -93,8 +92,7 @@ struct infoCallBackContext
 CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
     if (arg == nullptr)
     {
-        std::cerr << "Internal error: invalid info callback context"
-                  << std::endl;
+        lg2::error("Internal error: invalid info callback context");
         return -1;
     }
 
@@ -123,14 +121,14 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
     auto ret = genlmsg_parse(nlh, 0, tb, NCSI_ATTR_MAX, ncsiPolicy);
     if (!tb[NCSI_ATTR_PACKAGE_LIST])
     {
-        std::cerr << "No Packages" << std::endl;
+        lg2::error("No Packages");
         return -1;
     }
 
     auto attrTgt = static_cast<nlattr*>(nla_data(tb[NCSI_ATTR_PACKAGE_LIST]));
     if (!attrTgt)
     {
-        std::cerr << "Package list attribute is null" << std::endl;
+        lg2::error("Package list attribute is null");
         return -1;
     }
 
@@ -141,7 +139,7 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
                                packagePolicy);
         if (ret < 0)
         {
-            std::cerr << "Failed to parse package nested" << std::endl;
+            lg2::error("Failed to parse package nested");
             return -1;
         }
 
@@ -154,7 +152,7 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
         }
         else
         {
-            std::cout << "Package with no id" << std::endl;
+            lg2::debug("Package with no id");
         }
 
         if (packagetb[NCSI_PKG_ATTR_FORCED])
@@ -173,11 +171,11 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
                                    channelListTarget, channelPolicy);
             if (ret < 0)
             {
-                std::cerr << "Failed to parse channel nested" << std::endl;
+                lg2::error("Failed to parse channel nested");
                 continue;
             }
 
-            ChannelInfo chan{};
+            ChannelInfo chan;
 
             if (channeltb[NCSI_CHANNEL_ATTR_ID])
             {
@@ -187,7 +185,7 @@ CallBack infoCallBack = [](struct nl_msg* msg, void* arg) {
             }
             else
             {
-                std::cout << "Channel with no ID" << std::endl;
+                lg2::debug("Channel with no ID");
                 continue;
             }
 
@@ -248,8 +246,7 @@ CallBack sendCallBack = [](struct nl_msg* msg, void* arg) {
 
     if (arg == nullptr)
     {
-        std::cerr << "Internal error: invalid send callback context"
-                  << std::endl;
+        lg2::error("Internal error: invalid send callback context");
         return -1;
     }
 
@@ -258,13 +255,13 @@ CallBack sendCallBack = [](struct nl_msg* msg, void* arg) {
     auto ret = genlmsg_parse(nlh, 0, tb, NCSI_ATTR_MAX, ncsiPolicy);
     if (ret)
     {
-        std::cerr << "Failed to parse message" << std::endl;
+        lg2::error("Failed to parse message");
         return ret;
     }
 
     if (tb[NCSI_ATTR_DATA] == nullptr)
     {
-        std::cerr << "Response: No data" << std::endl;
+        lg2::error("Response: No data");
         return -1;
     }
 
@@ -289,28 +286,30 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
     nlSocketPtr socket(nl_socket_alloc(), &::nl_socket_free);
     if (socket == nullptr)
     {
-        std::cerr << "Unable to allocate memory for the socket" << std::endl;
+        lg2::error("Unable to allocate memory for the socket");
         return -ENOMEM;
     }
+
+    nl_socket_disable_auto_ack(socket.get());
 
     auto ret = genl_connect(socket.get());
     if (ret < 0)
     {
-        std::cerr << "Failed to open the socket , RC : " << ret << std::endl;
+        lg2::error("Failed to open the socket , RC : {RC}", "RC", ret);
         return ret;
     }
 
     auto driverID = genl_ctrl_resolve(socket.get(), "NCSI");
     if (driverID < 0)
     {
-        std::cerr << "Failed to resolve, RC : " << ret << std::endl;
+        lg2::error("Failed to resolve, RC : {RC}", "RC", ret);
         return driverID;
     }
 
     nlMsgPtr msg(nlmsg_alloc(), &::nlmsg_free);
     if (msg == nullptr)
     {
-        std::cerr << "Unable to allocate memory for the message" << std::endl;
+        lg2::error("Unable to allocate memory for the message");
         return -ENOMEM;
     }
 
@@ -318,8 +317,8 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
                               flags, cmd.ncsi_cmd, 0);
     if (!msgHdr)
     {
-        std::cerr << "Unable to add the netlink headers , COMMAND : "
-                  << cmd.ncsi_cmd << std::endl;
+        lg2::error("Unable to add the netlink headers , COMMAND : {COMMAND}",
+                   "COMMAND", cmd.ncsi_cmd);
         return -ENOMEM;
     }
 
@@ -329,8 +328,9 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
                           package);
         if (ret < 0)
         {
-            std::cerr << "Failed to set the attribute , RC : " << ret
-                      << " PACKAGE " << package << std::endl;
+            lg2::error("Failed to set the attribute , RC : {RC} PACKAGE "
+                       "{PACKAGE}",
+                       "RC", ret, "PACKAGE", lg2::hex, package);
             return ret;
         }
     }
@@ -341,8 +341,9 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
                           channel);
         if (ret < 0)
         {
-            std::cerr << "Failed to set the attribute , RC : " << ret
-                      << " CHANNEL : " << channel << std::endl;
+            lg2::error("Failed to set the attribute , RC : {RC} CHANNEL : "
+                       "{CHANNEL}",
+                       "RC", ret, "CHANNEL", lg2::hex, channel);
             return ret;
         }
     }
@@ -351,8 +352,9 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
                       interface.ifindex);
     if (ret < 0)
     {
-        std::cerr << "Failed to set the attribute , RC : " << ret
-                  << " INTERFACE : " << interface.ifindex << std::endl;
+        lg2::error("Failed to set the attribute , RC : {RC} INTERFACE : "
+                   "{INTERFACE}",
+                   "RC", ret, "INTERFACE", interface);
         return ret;
     }
 
@@ -361,7 +363,7 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
     {
         if (cmd.payload.size() != sizeof(unsigned int))
         {
-            std::cerr << "Package/Channel mask must be 32-bits" << std::endl;
+            lg2::error("Package/Channel mask must be 32-bits");
             return -EINVAL;
         }
         int maskAttr =
@@ -373,8 +375,8 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
             *(reinterpret_cast<const unsigned int*>(cmd.payload.data())));
         if (ret < 0)
         {
-            std::cerr << "Failed to set the mask attribute, RC : " << ret
-                      << std::endl;
+            lg2::error("Failed to set the mask attribute, RC : {RC}", "RC",
+                       ret);
             return ret;
         }
     }
@@ -382,7 +384,7 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
     {
         std::vector<unsigned char> pl(
             sizeof(NCSIPacketHeader) + cmd.payload.size());
-        NCSIPacketHeader* hdr = reinterpret_cast<NCSIPacketHeader*>(pl.data());
+        NCSIPacketHeader* hdr = (NCSIPacketHeader*)pl.data();
 
         std::copy(cmd.payload.begin(), cmd.payload.end(),
                   pl.begin() + sizeof(NCSIPacketHeader));
@@ -394,12 +396,11 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
                       pl.data());
         if (ret < 0)
         {
-            std::cerr << "Failed to set the data attribute, RC : " << ret
-                      << std::endl;
+            lg2::error("Failed to set the data attribute, RC : {RC}", "RC",
+                       ret);
             return ret;
         }
 
-        nl_socket_disable_auto_ack(socket.get());
         nl_socket_disable_seq_check(socket.get());
     }
 
@@ -410,15 +411,14 @@ int applyCmd(NetlinkInterface& interface, const NetlinkCommand& cmd,
     ret = nl_send_auto(socket.get(), msg.get());
     if (ret < 0)
     {
-        std::cerr << "Failed to send the message , RC : " << ret << std::endl;
+        lg2::error("Failed to send the message , RC : {RC}", "RC", ret);
         return ret;
     }
 
     ret = nl_recvmsgs_default(socket.get());
     if (ret < 0)
     {
-        std::cerr << "Failed to receive the message , RC : " << ret
-                  << std::endl;
+        lg2::error("Failed to receive the message , RC : {RC}", "RC", ret);
         return ret;
     }
 
@@ -441,9 +441,10 @@ std::string NetlinkInterface::toString()
 
 std::optional<NCSIResponse> NetlinkInterface::sendCommand(NCSICommand& cmd)
 {
-    std::cout << "Send Command, CHANNEL : " << std::hex << (int)cmd.getChannel()
-              << " , PACKAGE : " << (int)cmd.package << " , INTERFACE: " << this
-              << std::dec << std::endl;
+    lg2::debug("Send Command, CHANNEL : {CHANNEL} , PACKAGE : {PACKAGE}, "
+               "INTERFACE: {INTERFACE}",
+               "CHANNEL", lg2::hex, cmd.getChannel(), "PACKAGE", lg2::hex,
+               cmd.package, "INTERFACE", this);
 
     internal::sendCallBackContext ctx{};
 
@@ -463,8 +464,10 @@ std::optional<NCSIResponse> NetlinkInterface::sendCommand(NCSICommand& cmd)
 
 int NetlinkInterface::setChannel(int package, int channel)
 {
-    std::cout << "Set CHANNEL : " << std::hex << channel << " , PACKAGE : "
-              << package << " , INTERFACE : " << this << std::dec << std::endl;
+    lg2::debug("Set CHANNEL : {CHANNEL} , PACKAGE : {PACKAGE}, INTERFACE : "
+               "{INTERFACE}",
+               "CHANNEL", lg2::hex, channel, "PACKAGE", lg2::hex, package,
+               "INTERFACE", this);
 
     internal::NetlinkCommand cmd(ncsi_nl_commands::NCSI_CMD_SET_INTERFACE);
 
@@ -473,7 +476,7 @@ int NetlinkInterface::setChannel(int package, int channel)
 
 int NetlinkInterface::clearInterface()
 {
-    std::cout << "ClearInterface , INTERFACE : " << this << std::endl;
+    lg2::debug("ClearInterface , INTERFACE : {INTERFACE}", "INTERFACE", this);
 
     internal::NetlinkCommand cmd(ncsi_nl_commands::NCSI_CMD_CLEAR_INTERFACE);
     return internal::applyCmd(*this, cmd);
@@ -484,8 +487,8 @@ std::optional<InterfaceInfo> NetlinkInterface::getInfo(int package)
     int rc, flags = package == DEFAULT_VALUE ? NLM_F_DUMP : NONE;
     InterfaceInfo info;
 
-    std::cout << "Get Info , PACKAGE : " << std::hex << package
-              << " , INTERFACE: " << this << std::dec << std::endl;
+    lg2::debug("Get Info , PACKAGE : {PACKAGE}, INTERFACE: {INTERFACE}",
+               "PACKAGE", lg2::hex, package, "INTERFACE", this);
 
     struct internal::infoCallBackContext ctx = {
         .info = &info,
@@ -506,8 +509,8 @@ std::optional<InterfaceInfo> NetlinkInterface::getInfo(int package)
 
 int NetlinkInterface::setPackageMask(unsigned int mask)
 {
-    std::cout << "Set Package Mask , INTERFACE: " << this
-              << " MASK: " << std::hex << mask << std::dec << std::endl;
+    lg2::debug("Set Package Mask , INTERFACE: {INTERFACE} MASK: {MASK}",
+               "INTERFACE", this, "MASK", lg2::hex, mask);
     auto payload = std::span<const unsigned char>(
         reinterpret_cast<const unsigned char*>(&mask),
         reinterpret_cast<const unsigned char*>(&mask) + sizeof(decltype(mask)));
@@ -519,9 +522,10 @@ int NetlinkInterface::setPackageMask(unsigned int mask)
 
 int NetlinkInterface::setChannelMask(int package, unsigned int mask)
 {
-    std::cout << "Set Channel Mask , INTERFACE: " << this
-              << " , PACKAGE : " << std::hex << package << " MASK: " << mask
-              << std::dec << std::endl;
+    lg2::debug(
+        "Set Channel Mask , INTERFACE: {INTERFACE}, PACKAGE : {PACKAGE} MASK: {MASK}",
+        "INTERFACE", this, "PACKAGE", lg2::hex, package, "MASK", lg2::hex,
+        mask);
     auto payload = std::span<const unsigned char>(
         reinterpret_cast<const unsigned char*>(&mask),
         reinterpret_cast<const unsigned char*>(&mask) + sizeof(decltype(mask)));
@@ -536,8 +540,7 @@ int NCSIResponse::parseFullPayload()
     if (this->full_payload.size() < sizeof(internal::NCSIPacketHeader) +
                                         sizeof(internal::NCSIResponsePayload))
     {
-        std::cerr << "Response: Not enough data for a response message"
-                  << std::endl;
+        lg2::error("Response: Not enough data for a response message");
         return -1;
     }
 
@@ -549,9 +552,9 @@ int NCSIResponse::parseFullPayload()
      * so cannot underflow here */
     if (payloadLen > this->full_payload.size() - sizeof(*respHeader))
     {
-        std::cerr << "Invalid header length " << payloadLen << " (vs "
-                  << (this->full_payload.size() - sizeof(*respHeader))
-                  << ") in response" << std::endl;
+        lg2::error("Invalid header length {HDRLEN} (vs {LEN}) in response",
+                   "HDRLEN", payloadLen, "LEN",
+                   this->full_payload.size() - sizeof(*respHeader));
         return -1;
     }
 
@@ -637,21 +640,18 @@ std::optional<NCSIResponse> MCTPInterface::sendCommand(NCSICommand& cmd)
     wlen = sendmsg(sd, &msg, 0);
     if (wlen < 0)
     {
-        std::stringstream ss;
-        std::cout << "Failed to send MCTP message, ERRNO: " << -errno
-                  << std::endl;
-
+        lg2::error("Failed to send MCTP message, ERRNO: {ERRNO}", "ERRNO",
+                   -wlen);
         return {};
     }
     else if ((size_t)wlen != sizeof(cmdHeader) + payloadLen + padLen)
     {
-        std::cout << "Short write sending MCTP message, LEN: " << wlen
-                  << std::endl;
+        lg2::error("Short write sending MCTP message, LEN: {LEN}", "LEN", wlen);
         return {};
     }
 
     internal::NCSIPacketHeader* respHeader;
-    NCSIResponsePayload* respPayload = nullptr;
+    NCSIResponsePayload* respPayload;
     NCSIResponse resp{};
 
     resp.full_payload.resize(maxRespLen);
@@ -667,19 +667,19 @@ std::optional<NCSIResponse> MCTPInterface::sendCommand(NCSICommand& cmd)
     rlen = recvmsg(sd, &msg, MSG_TRUNC);
     if (rlen < 0)
     {
-        std::cerr << "Failed to read MCTP response, ERRNO: " << -rlen
-                  << std::endl;
+        lg2::error("Failed to read MCTP response, ERRNO: {ERRNO}", "ERRNO",
+                   -rlen);
         return {};
     }
     else if ((size_t)rlen < sizeof(*respHeader) + sizeof(*respPayload))
     {
-        std::cerr << "Short read receiving MCTP message, LEN: " << rlen
-                  << std::endl;
+        lg2::error("Short read receiving MCTP message, LEN: {LEN}", "LEN",
+                   rlen);
         return {};
     }
     else if ((size_t)rlen > maxRespLen)
     {
-        std::cerr << "MCTP response is too large, LEN: " << rlen << std::endl;
+        lg2::error("MCTP response is too large, LEN: {LEN}", "LEN", rlen);
         return {};
     }
 
@@ -691,22 +691,22 @@ std::optional<NCSIResponse> MCTPInterface::sendCommand(NCSICommand& cmd)
     /* header validation */
     if (respHeader->MCID != mcid)
     {
-        std::cerr << "Invalid MCID " << std::hex << (int)respHeader->MCID
-                  << std::dec << " in response" << std::endl;
+        lg2::error("Invalid MCID {MCID} in response", "MCID", lg2::hex,
+                   respHeader->MCID);
         return {};
     }
 
     if (respHeader->id != iid)
     {
-        std::cerr << "Invalid IID " << std::hex << (int)respHeader->id
-                  << std::dec << " in response" << std::endl;
+        lg2::error("Invalid IID {IID} in response", "IID", lg2::hex,
+                   respHeader->id);
         return {};
     }
 
     if (respHeader->type != (cmd.opcode | 0x80))
     {
-        std::cerr << "Invalid opcode " << std::hex << (int)respHeader->type
-                  << std::dec << " in response" << std::endl;
+        lg2::error("Invalid opcode {OPCODE} in response", "OPCODE", lg2::hex,
+                   respHeader->type);
         return {};
     }
 
@@ -772,8 +772,8 @@ std::optional<uint8_t> MCTPInterface::allocateIID()
     int fd = open(mctp_iid_path, O_RDWR | O_CREAT, 0600);
     if (fd < 0)
     {
-        std::cerr << "Error opening IID database " << mctp_iid_path << ": "
-                  << strerror(errno) << std::endl;
+        lg2::warning("Error opening IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
         return {};
     }
 
@@ -793,8 +793,8 @@ std::optional<uint8_t> MCTPInterface::allocateIID()
     int rc = fcntl(iidFd.fd, F_OFD_SETLKW, &flock);
     if (rc)
     {
-        std::cerr << "Error locking IID database " << mctp_iid_path << ": "
-                  << strerror(errno) << std::endl;
+        lg2::warning("Error locking IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
         return {};
     }
 
@@ -805,8 +805,8 @@ std::optional<uint8_t> MCTPInterface::allocateIID()
     rc = pread(iidFd.fd, &iid, sizeof(iid), eid);
     if (rc < 0)
     {
-        std::cerr << "Error reading IID database " << mctp_iid_path << ": "
-                  << strerror(errno) << std::endl;
+        lg2::warning("Error reading IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
         return {};
     }
 
@@ -823,8 +823,8 @@ std::optional<uint8_t> MCTPInterface::allocateIID()
     rc = pwrite(iidFd.fd, &iid, sizeof(iid), eid);
     if (rc != sizeof(iid))
     {
-        std::cerr << "Error writing IID database " << mctp_iid_path << ": "
-                  << strerror(errno) << std::endl;
+        lg2::warning("Error writing IID database {FILE}: {ERROR}", "FILE",
+                     mctp_iid_path, "ERROR", strerror(errno));
         return {};
     }
 

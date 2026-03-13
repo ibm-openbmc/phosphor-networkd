@@ -1,7 +1,6 @@
 #pragma once
 #include "dhcp_configuration.hpp"
 #include "ethernet_interface.hpp"
-#include "hostname_manager.hpp"
 #include "system_configuration.hpp"
 #include "types.hpp"
 #include "xyz/openbmc_project/Network/VLAN/Create/server.hpp"
@@ -148,9 +147,6 @@ class Manager : public ManagerIface
 
     /** @brief pointer to dhcp conf object. */
     std::unique_ptr<dhcp::Configuration> dhcpConf = nullptr;
-
-    /** @brief pointer to hostname mgr object. */
-    std::unique_ptr<HostnameManager> hostnameManager = nullptr;
 
     /** @brief Network Configuration directory. */
     std::filesystem::path confDir;
