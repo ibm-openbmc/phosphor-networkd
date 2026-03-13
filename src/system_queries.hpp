@@ -12,6 +12,7 @@ struct EthInfo
 {
     bool autoneg;
     uint16_t speed;
+    bool fullDuplex;
 };
 EthInfo getEthInfo(stdplus::zstring_view ifname);
 
@@ -20,5 +21,8 @@ void setMTU(std::string_view ifname, unsigned mtu);
 void setNICUp(std::string_view ifname, bool up);
 
 void deleteIntf(unsigned idx);
+
+bool deleteLinkLocalIPv4ViaNetlink(unsigned ifidx,
+                                   const stdplus::SubnetAny& ip);
 
 } // namespace phosphor::network::system

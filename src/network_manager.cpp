@@ -1,6 +1,7 @@
 #include "network_manager.hpp"
 
 #include "config_parser.hpp"
+#include "hostname_manager.hpp"
 #include "ipaddress.hpp"
 #include "system_queries.hpp"
 #include "types.hpp"
@@ -154,14 +155,18 @@ Manager::Manager(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                                       "org.freedesktop.DBus.Properties", "Get");
         req.append("org.freedesktop.network1.Link", "AdministrativeState");
         auto rsp = req.call();
-        std::variant<std::string> val;
-        rsp.read(val);
+        auto val = rsp.unpack<std::variant<std::string>>();
+
         handleAdminState(std::get<std::string>(val), ifidx);
     }
 
     std::filesystem::create_directories(confDir);
     systemConf = std::make_unique<phosphor::network::SystemConfiguration>(
         bus, (this->objPath / "config").str);
+
+    // Initialize hostname manager to set unique hostname on first boot
+    hostnameManager = std::make_unique<HostnameManager>(bus, *this);
+    hostnameManager->initialize();
 }
 
 void Manager::createInterface(const AllIntfInfo& info, bool enabled)
@@ -189,6 +194,11 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
         auto it = interfaces.find(*info.intf.name);
         if (it != interfaces.end())
         {
+            if (info.intf.vlan_id)
+            {
+                interfacesByIdx.insert_or_assign(info.intf.idx,
+                                                 it->second.get());
+            }
             it->second->updateInfo(info.intf);
             return;
         }

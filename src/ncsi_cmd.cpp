@@ -1,19 +1,7 @@
-/**
- * Copyright © 2018 IBM Corporation
- * Copyright © 2024 Code Construct
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright 2018 IBM Corporation
+// SPDX-FileCopyrightText: Copyright 2024 Code Construct
+
 #include "ncsi_util.hpp"
 
 #include <assert.h>
@@ -47,6 +35,7 @@ struct GlobalOptions
     std::unique_ptr<Interface> interface;
     std::optional<uint8_t> package;
     std::optional<uint8_t> channel;
+    bool verbose = false;
 };
 
 struct MCTPAddress
@@ -64,6 +53,7 @@ const struct option options[] = {
     {"channel", required_argument, NULL, 'c'},
     {"interface", required_argument, NULL, 'i'},
     {"mctp", required_argument, NULL, 'm'},
+    {"verbose", no_argument, NULL, 'v'},
     {"help", no_argument, NULL, 'h'},
     {0, 0, 0, 0},
 };
@@ -85,6 +75,7 @@ static void print_usage(const char* progname)
         "    --package PACKAGE, -p  For non-discovery commands this is required; for discovery it is optional and\n"
         "                           restricts the discovery to a specific package index.\n"
         "    --channel CHANNEL, -c  Specify a channel.\n"
+        "    --verbose, -v          Enable verbose output.\n"
         "\n"
         "A --package/-p argument is required, as well as interface type "
         "(--interface/-i or --mctp/-m)\n"
@@ -256,7 +247,7 @@ static std::optional<std::tuple<GlobalOptions, int>> parseGlobalOptions(
         /* We're using + here as we want to stop parsing at the subcommand
          * name
          */
-        int opt = getopt_long(argc, argv, "+p:c:i:m:h", options, NULL);
+        int opt = getopt_long(argc, argv, "+p:c:i:m:vh", options, NULL);
         if (opt == -1)
         {
             break;
@@ -296,7 +287,9 @@ static std::optional<std::tuple<GlobalOptions, int>> parseGlobalOptions(
                 }
                 opts.channel = *chan;
                 break;
-
+            case 'v':
+                opts.verbose = true;
+                break;
             case 'h':
             default:
                 print_usage(progname);
@@ -380,18 +373,20 @@ static int ncsiCommand(GlobalOptions& options, uint8_t type,
 
     NCSICommand cmd(type, pkg, ch,
                     std::span<unsigned char>(payload.data(), payload.size()));
-    lg2::debug("Command: type {TYPE}, payload {PAYLOAD_LEN} bytes: {PAYLOAD}",
-               "TYPE", lg2::hex, type, "PAYLOAD_LEN", payload.size(), "PAYLOAD",
-               toHexStr(payload));
+    if (options.verbose)
+    {
+        std::cout << "Command: type " << std::hex << static_cast<int>(type)
+                  << ", payload " << payload.size()
+                  << " bytes: " << toHexStr(payload).data() << std::endl;
+    }
 
     auto resp = options.interface->sendCommand(cmd);
     if (!resp)
     {
         return -1;
     }
-
-    lg2::debug("Response {DATA_LEN} bytes: {DATA}", "DATA_LEN",
-               resp->full_payload.size(), "DATA", toHexStr(resp->full_payload));
+    std::cout << "Response " << resp->full_payload.size()
+              << " bytes: " << toHexStr(resp->full_payload).data() << std::endl;
 
     return 0;
 }
