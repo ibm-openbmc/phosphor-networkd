@@ -167,19 +167,15 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
 
     mapperCall.append(invRoot, depth, interfaces);
 
-    auto mapperReply = [&]() {
-        try
-        {
-            return bus.call(mapperCall);
-        }
-        catch (const sdbusplus::exception::SdBusError& e)
-        {
-            lg2::error("Error in mapper call");
-            elog<InternalFailure>();
-        }
-    }();
+    auto mapperReply = bus.call(mapperCall);
+    if (mapperReply.is_method_error())
+    {
+        lg2::error("Error in mapper call");
+        elog<InternalFailure>();
+    }
 
-    auto objectTree = mapperReply.unpack<ObjectTree>();
+    ObjectTree objectTree;
+    mapperReply.read(objectTree);
 
     if (objectTree.empty())
     {
@@ -225,22 +221,17 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
 
     method.append(invNetworkIntf, "MACAddress");
 
-    auto reply = [&]() {
-        try
-        {
-            return bus.call(method);
-        }
-        catch (const sdbusplus::exception::SdBusError& e)
-        {
-            lg2::error(
-                "Failed to get MACAddress for path {DBUS_PATH} interface {DBUS_INTF}",
-                "DBUS_PATH", objPath, "DBUS_INTF", invNetworkIntf);
-            elog<InternalFailure>();
-        }
-    }();
+    auto reply = bus.call(method);
+    if (reply.is_method_error())
+    {
+        lg2::error(
+            "Failed to get MACAddress for path {DBUS_PATH} interface {DBUS_INTF}",
+            "DBUS_PATH", objPath, "DBUS_INTF", invNetworkIntf);
+        elog<InternalFailure>();
+    }
 
-    auto value = reply.unpack<std::variant<std::string>>();
-
+    std::variant<std::string> value;
+    reply.read(value);
     return stdplus::fromStr<stdplus::EtherAddr>(std::get<std::string>(value));
 #endif
 }

@@ -101,8 +101,8 @@ std::string to_string(Interface& interface);
 struct NetlinkInterface : Interface
 {
     /* implementations for Interface */
-    std::optional<NCSIResponse> sendCommand(NCSICommand& cmd) override;
-    std::string toString() override;
+    std::optional<NCSIResponse> sendCommand(NCSICommand& cmd);
+    std::string toString();
 
     /* @brief  This function will ask underlying NCSI driver
      *         to set a specific  package or package/channel
@@ -128,7 +128,7 @@ struct NetlinkInterface : Interface
      *         the package, or all packages if DEFAULT_VALUE
      *         is passed
      * @param[in] package - NCSI Package
-     * @returns an InterfaceInfo with package data the specified package,
+     * @returns an InterfaceInfo with package data the specified pacakge,
      *          or all packages if none is specified.
      */
     std::optional<InterfaceInfo> getInfo(int package);
@@ -155,8 +155,8 @@ struct NetlinkInterface : Interface
 
 struct MCTPInterface : Interface
 {
-    std::optional<NCSIResponse> sendCommand(NCSICommand& cmd) override;
-    std::string toString() override;
+    std::optional<NCSIResponse> sendCommand(NCSICommand& cmd);
+    std::string toString();
 
     MCTPInterface(int net, uint8_t eid);
     ~MCTPInterface();
