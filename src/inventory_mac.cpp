@@ -452,18 +452,20 @@ void registerBMCPositionPropertyChangeSignal(sdbusplus::bus_t& bus)
     lg2::info(
         "Registering the PropertyChanged signal matcher for BMC position");
     auto callback = [&](sdbusplus::message_t& m) {
-        std::map<DbusObjectPath,
-                 std::map<DbusInterface, std::variant<PropertyValue>>>
-            interfacesProperties;
-        lg2::info("Got position interfaces or property change signal");
-        sdbusplus::message::object_path objPath;
-        m.read(objPath, interfacesProperties);
-
-        for (auto& interface : interfacesProperties)
+        try
         {
-            if (interface.first == invPositionIntf)
+            lg2::info("Got position property change signal");
+
+            std::string interface;
+            std::map<std::string, std::variant<uint64_t, uint32_t>>
+                changedProperties;
+            std::vector<std::string> invalidatedProperties;
+
+            m.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == invPositionIntf)
             {
-                for (const auto& property : interface.second)
+                for (const auto& property : changedProperties)
                 {
                     if (property.first == "Position")
                     {
@@ -472,8 +474,18 @@ void registerBMCPositionPropertyChangeSignal(sdbusplus::bus_t& bus)
                         break;
                     }
                 }
-                break;
             }
+        }
+        catch (const sdbusplus::exception::SdBusError& e)
+        {
+            lg2::error(
+                "D-Bus error in position property change handler: {ERROR}",
+                "ERROR", e.what());
+        }
+        catch (const std::exception& e)
+        {
+            lg2::error("Exception in position property change handler: {ERROR}",
+                       "ERROR", e.what());
         }
     };
 
