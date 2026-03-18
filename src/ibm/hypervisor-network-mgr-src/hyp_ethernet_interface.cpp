@@ -723,6 +723,7 @@ static void normalizeGateway(std::string& gw)
 
 std::string HypEthInterface::defaultGateway6(std::string gateway)
 {
+    lg2::info("Setting IPv6 static default gateway");
     normalizeGateway<stdplus::In6Addr>(gateway);
     if (gateway.empty())
     {
@@ -741,8 +742,9 @@ std::string HypEthInterface::defaultGateway6(std::string gateway)
             if (ipObj->origin() == HypIP::AddressOrigin::Static)
             {
                 HypEthernetIntf::defaultGateway6(gateway);
-                // Update ipv6 gateway as well
-                ipObj->HypIP::gateway(gateway);
+                // Update ipv6 gateway as well - this will trigger the BIOS
+                // table update
+                ipObj->gateway(gateway);
             }
             else
             {
