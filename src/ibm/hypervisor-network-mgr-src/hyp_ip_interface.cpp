@@ -392,8 +392,6 @@ std::string HypIPAddress::gateway(std::string gateway)
             else if (protocol == HypIP::Protocol::IPv6)
             {
                 parent.get().validateGateway<stdplus::In6Addr>(gateway);
-                // update the default gw of the ethernet interface
-                parent.get().defaultGateway6(gateway);
             }
         }
         else
