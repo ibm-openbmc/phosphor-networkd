@@ -512,6 +512,12 @@ void registerBMCPositionInterfacesAddedSignal(sdbusplus::bus_t& bus)
         sdbusplus::message::object_path objPath;
         m.read(objPath, interfacesProperties);
 
+        // Only process Position interface from system object
+        if (objPath.str != systemPath)
+        {
+            return;
+        }
+
         for (auto& interface : interfacesProperties)
         {
             if (interface.first == invPositionIntf)
