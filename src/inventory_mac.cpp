@@ -200,7 +200,8 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
         {
             lg2::info("Get info on interface {NET_INTF}, object {OBJ}",
                       "NET_INTF", interfaceName, "OBJ", object.first);
-            if (object.first.ends_with("/" + interfaceName))
+            if (object.first.contains("logical_bmc") &&
+                object.first.ends_with(interfaceName))
             {
                 objPath = object.first;
                 service = object.second.begin()->first;
