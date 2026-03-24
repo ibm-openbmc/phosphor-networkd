@@ -90,71 +90,6 @@ void setFirstBootMACOnInterface(const std::string& intf, const std::string& mac)
 stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
                                     const std::string& intfName)
 {
-#ifdef ENABLE_SKIBOARDS_MAC_PATH
-    // For skiboards, use direct path:
-    // /xyz/openbmc_project/inventory/system/eth<N>
-    std::string skiboardsPath =
-        "/xyz/openbmc_project/inventory/system/" + intfName;
-
-    lg2::info("Skiboards mode: Reading MAC from path {DBUS_PATH}", "DBUS_PATH",
-              skiboardsPath);
-
-    try
-    {
-        auto mapperCall =
-            bus.new_method_call(mapperBus, mapperObj, mapperIntf, "GetObject");
-
-        std::vector<std::string> interfaces;
-        interfaces.emplace_back(invNetworkIntf);
-        mapperCall.append(skiboardsPath, interfaces);
-
-        auto mapperReply = bus.call(mapperCall);
-        if (mapperReply.is_method_error())
-        {
-            lg2::error("Error in mapper call for skiboards path {DBUS_PATH}",
-                       "DBUS_PATH", skiboardsPath);
-            elog<InternalFailure>();
-        }
-
-        std::map<std::string, std::vector<std::string>> mapperResponse;
-        mapperReply.read(mapperResponse);
-
-        if (mapperResponse.empty())
-        {
-            lg2::error("No service found for skiboards path {DBUS_PATH}",
-                       "DBUS_PATH", skiboardsPath);
-            elog<InternalFailure>();
-        }
-
-        auto service = mapperResponse.begin()->first;
-
-        auto method = bus.new_method_call(
-            service.c_str(), skiboardsPath.c_str(), propIntf, methodGet);
-        method.append(invNetworkIntf, "MACAddress");
-
-        auto reply = bus.call(method);
-        if (reply.is_method_error())
-        {
-            lg2::error(
-                "Failed to get MACAddress for skiboards path {DBUS_PATH}",
-                "DBUS_PATH", skiboardsPath);
-            elog<InternalFailure>();
-        }
-
-        std::variant<std::string> value;
-        reply.read(value);
-        return stdplus::fromStr<stdplus::EtherAddr>(
-            std::get<std::string>(value));
-    }
-    catch (const std::exception& e)
-    {
-        lg2::error(
-            "Exception reading MAC from skiboards path {DBUS_PATH}: {ERROR}",
-            "DBUS_PATH", skiboardsPath, "ERROR", e.what());
-        elog<InternalFailure>();
-    }
-#else
-    // For all other machine types
     std::string interfaceName = configJson[intfName];
 
     std::vector<DbusInterface> interfaces;
@@ -200,7 +135,8 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
         {
             lg2::info("Get info on interface {NET_INTF}, object {OBJ}",
                       "NET_INTF", interfaceName, "OBJ", object.first);
-            if (object.first.ends_with("/" + interfaceName))
+            if (object.first.contains("logical_bmc") &&
+                object.first.ends_with(interfaceName))
             {
                 objPath = object.first;
                 service = object.second.begin()->first;
@@ -233,7 +169,6 @@ stdplus::EtherAddr getfromInventory(sdbusplus::bus_t& bus,
     std::variant<std::string> value;
     reply.read(value);
     return stdplus::fromStr<stdplus::EtherAddr>(std::get<std::string>(value));
-#endif
 }
 
 bool setInventoryMACOnSystem(sdbusplus::bus_t& bus, const std::string& intfname)
@@ -510,6 +445,12 @@ void registerBMCPositionInterfacesAddedSignal(sdbusplus::bus_t& bus)
 
         sdbusplus::message::object_path objPath;
         m.read(objPath, interfacesProperties);
+
+        // Only process Position interface from system object
+        if (objPath.str != systemPath)
+        {
+            return;
+        }
 
         for (auto& interface : interfacesProperties)
         {
