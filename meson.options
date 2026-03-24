@@ -36,8 +36,4 @@ option(
     type: 'boolean',
     description: 'Enable rbmc configuration on internal interface, assigns IP address using BMC position ',
 )
-option(
-    'enable-skiboards-mac-path',
-    type: 'boolean',
-    description: 'Enable reading skiboards specific inventory MAC path (/xyz/openbmc_project/inventory/system/eth<N>)',
-)
+option('lldp', type: 'boolean', description: 'Enable LLDP neighbor discovery')
