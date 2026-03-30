@@ -494,7 +494,9 @@ void registerSignals(sdbusplus::bus_t& bus)
 
         for (const auto& pattern : configJson.items())
         {
-            if (objPath.str.ends_with("/" + pattern.value().get<std::string>()))
+            if (objPath.str.ends_with(
+                    "/" + pattern.value().get<std::string>()) &&
+                objPath.str.contains("logical_bmc"))
             {
                 for (auto& interface : interfacesProperties)
                 {
