@@ -1321,23 +1321,68 @@ void EthernetInterface::writeConfigurationFile()
                 {
                     gateways.emplace_back(gateway4);
                     auto& gateway4route = config.map["Route"].emplace_back();
+                    gateway4route["Destination"].emplace_back("0.0.0.0/0");
                     gateway4route["Gateway"].emplace_back(gateway4);
                     gateway4route["GatewayOnLink"].emplace_back("true");
 
                     std::string routingTableId =
                         std::to_string(generateRouteTableID(interfaceName()));
                     gateway4route["Table"].emplace_back(routingTableId);
-                    std::string routeAddressPrefix =
+                    std::string routeGatewayPrefix =
                         generateNetworkRoute(gateway4, prefixLength);
 
-                    auto& routingPolicyTo =
+                    auto& routingPolicyGatewayTo =
                         config.map["RoutingPolicyRule"].emplace_back();
-                    routingPolicyTo["Table"].emplace_back(routingTableId);
-                    routingPolicyTo["To"].emplace_back(routeAddressPrefix);
-                    auto& routingPolicyFrom =
+                    routingPolicyGatewayTo["Table"].emplace_back(
+                        routingTableId);
+                    routingPolicyGatewayTo["Priority"].emplace_back("10");
+                    routingPolicyGatewayTo["To"].emplace_back(
+                        routeGatewayPrefix);
+
+                    auto& routingPolicyGatewayFrom =
                         config.map["RoutingPolicyRule"].emplace_back();
-                    routingPolicyFrom["Table"].emplace_back(routingTableId);
-                    routingPolicyFrom["From"].emplace_back(routeAddressPrefix);
+                    routingPolicyGatewayFrom["Table"].emplace_back(
+                        routingTableId);
+                    routingPolicyGatewayFrom["Priority"].emplace_back("10");
+                    routingPolicyGatewayFrom["From"].emplace_back(
+                        routeGatewayPrefix);
+
+                    auto& routingMainPolicyTo =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingMainPolicyTo["Table"].emplace_back("main");
+                    routingMainPolicyTo["Priority"].emplace_back("100");
+                    routingMainPolicyTo["To"].emplace_back(routeGatewayPrefix);
+
+                    auto& routingMainPolicyFrom =
+                        config.map["RoutingPolicyRule"].emplace_back();
+                    routingMainPolicyFrom["Table"].emplace_back("main");
+                    routingMainPolicyFrom["Priority"].emplace_back("100");
+                    routingMainPolicyFrom["From"].emplace_back(
+                        routeGatewayPrefix);
+
+                    for (const auto& addr : addrs)
+                    {
+                        if (originIsManuallyAssigned(addr.second->origin()))
+                        {
+                            std::stringstream ss(std::to_string(addr.first));
+                            std::string address;
+                            std::getline(ss, address, '/');
+                            std::string routeAddressPrefix =
+                                generateNetworkRoute(address, prefixLength);
+
+                            if (!routeAddressPrefix.empty())
+                            {
+                                auto& routingPolicyDestination =
+                                    config.map["Route"].emplace_back();
+                                routingPolicyDestination["Table"].emplace_back(
+                                    routingTableId);
+                                routingPolicyDestination["Destination"]
+                                    .emplace_back(routeAddressPrefix);
+                                routingPolicyDestination["Scope"].emplace_back(
+                                    "link");
+                            }
+                        }
+                    }
                 }
             }
 
