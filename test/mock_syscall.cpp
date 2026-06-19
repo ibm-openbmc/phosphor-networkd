@@ -189,6 +189,59 @@ int ioctl(int fd, unsigned long int request, ...)
         req->ifr_mtu = *it->second.mtu;
         return 0;
     }
+    else if (request == SIOCSIFMTU)
+    {
+        auto it = mock_if.find(req->ifr_name);
+        if (it == mock_if.end())
+        {
+            errno = ENXIO;
+            return -1;
+        }
+        it->second.mtu = req->ifr_mtu;
+        return 0;
+    }
+    else if (request == SIOCSIFADDR)
+    {
+        auto it = mock_if.find(req->ifr_name);
+        if (it == mock_if.end())
+        {
+            errno = ENXIO;
+            return -1;
+        }
+        return 0;
+    }
+    else if (request == SIOCSIFNETMASK)
+    {
+        auto it = mock_if.find(req->ifr_name);
+        if (it == mock_if.end())
+        {
+            errno = ENXIO;
+            return -1;
+        }
+        return 0;
+    }
+    else if (request == SIOCSIFBRDADDR)
+    {
+        auto it = mock_if.find(req->ifr_name);
+        if (it == mock_if.end())
+        {
+            errno = ENXIO;
+            return -1;
+        }
+        return 0;
+    }
+    else if (request == SIOCETHTOOL)
+    {
+        auto it = mock_if.find(req->ifr_name);
+        if (it == mock_if.end())
+        {
+            errno = ENXIO;
+            return -1;
+        }
+        // Return default/zeroed ethtool data for mock interfaces
+        // This ensures tests get predictable values
+        return 0;
+    }
 
     static auto real_ioctl =
         reinterpret_cast<decltype(&ioctl)>(dlsym(RTLD_NEXT, "ioctl"));
