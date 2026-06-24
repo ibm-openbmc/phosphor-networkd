@@ -47,31 +47,41 @@ std::vector<std::string> Manager::getInterfaces()
 
     try
     {
+        lg2::info("LLDP: Using systemd-networkd to discover interfaces");
+
         auto method = bus.new_method_call(
-            "xyz.openbmc_project.Network", "/xyz/openbmc_project/network",
-            "org.freedesktop.DBus.ObjectManager", "GetManagedObjects");
+            "org.freedesktop.network1", "/org/freedesktop/network1",
+            "org.freedesktop.network1.Manager", "ListLinks");
 
         auto reply = bus.call(method);
 
-        std::map<sdbusplus::message::object_path,
-                 std::map<std::string, std::map<std::string, DBusProp>>>
-            objects;
+        std::vector<
+            std::tuple<int32_t, std::string, sdbusplus::message::object_path>>
+            links;
+        reply.read(links);
 
-        reply.read(objects);
+        lg2::info("LLDP: Discovered {COUNT} network links", "COUNT",
+                  links.size());
 
-        for (const auto& [path, ifacesMap] : objects)
+        for (const auto& [ifindex, ifname, linkPath] : links)
         {
-            if (ifacesMap.find(
-                    "xyz.openbmc_project.Network.EthernetInterface") !=
-                ifacesMap.end())
+            if (ifname != "lo")
             {
-                ifnames.push_back(path.filename());
+                ifnames.push_back(ifname);
+                lg2::debug("LLDP: Monitoring interface {IF} (index={IDX})",
+                           "IF", ifname, "IDX", ifindex);
             }
         }
     }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("LLDP: DBus error while querying interfaces: {ERR}", "ERR",
+                   e.what());
+    }
     catch (const std::exception& e)
     {
-        lg2::error("Failed to call GetManagedObjects: {ERR}", "ERR", e.what());
+        lg2::error("LLDP: Failed to discover interfaces: {ERR}", "ERR",
+                   e.what());
     }
 
     return ifnames;

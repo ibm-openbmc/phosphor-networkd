@@ -2,8 +2,9 @@
 Description=LLDP for Neighbor Discovery
 After=lldpd.service
 After=network.target
-After=xyz.openbmc_project.Network.service
-Requires=xyz.openbmc_project.Network.service
+After=systemd-networkd.service
+Requires=systemd-networkd.service
+BindsTo=systemd-networkd.service
 
 [Service]
 ExecStart=/usr/bin/phosphor-lldpd
