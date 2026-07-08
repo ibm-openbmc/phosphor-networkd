@@ -345,23 +345,44 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
         {
             if (interface.first == targetInterface)
             {
-                try
+                // Check if the IP address is already assigned
+                bool ipAlreadyExists = false;
+                for (const auto& addr : interface.second->addrs)
                 {
-                    interface.second->deleteAll();
-                    lg2::info("Successfully cleared all IPs from {NET_INTF}",
-                              "NET_INTF", targetInterface);
-                }
-                catch (const std::exception& e)
-                {
-                    lg2::warning("Failed to delete all IPs: {ERROR}", "ERROR",
-                                 e.what());
+                    if (addr.second->address() == ipAddress &&
+                        addr.second->prefixLength() == prefixLength)
+                    {
+                        lg2::info(
+                            "IP {IP_ADDR}/{PREFIX} is already assigned to {NET_INTF}, skipping assignment",
+                            "IP_ADDR", ipAddress, "PREFIX", prefixLength,
+                            "NET_INTF", targetInterface);
+                        ipAlreadyExists = true;
+                        ipAssigned = true;
+                        break;
+                    }
                 }
 
-                interface.second->ip(IP::Protocol::IPv4, ipAddress,
-                                     prefixLength, "");
-                lg2::info("Successfully assigned IP address to {NET_INTF}",
-                          "NET_INTF", targetInterface);
-                ipAssigned = true;
+                if (!ipAlreadyExists)
+                {
+                    try
+                    {
+                        interface.second->deleteAll();
+                        lg2::info(
+                            "Successfully cleared all IPs from {NET_INTF}",
+                            "NET_INTF", targetInterface);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        lg2::warning("Failed to delete all IPs: {ERROR}",
+                                     "ERROR", e.what());
+                    }
+
+                    interface.second->ip(IP::Protocol::IPv4, ipAddress,
+                                         prefixLength, "");
+                    lg2::info("Successfully assigned IP address to {NET_INTF}",
+                              "NET_INTF", targetInterface);
+                    ipAssigned = true;
+                }
                 break;
             }
         }
