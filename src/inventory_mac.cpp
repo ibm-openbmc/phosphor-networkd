@@ -3,6 +3,7 @@
 #include "inventory_mac.hpp"
 
 #include "network_manager.hpp"
+#include "system_queries.hpp"
 #include "types.hpp"
 
 #include <nlohmann/json.hpp>
@@ -286,16 +287,62 @@ std::optional<uint64_t> getPositionFromInventory(sdbusplus::bus_t& bus)
     }
 }
 
-bool interfaceExists(const std::string& intfName)
+/**
+ * @brief Check if an interface exists
+ * @param interface name to check
+ * @return true if interface exists, false otherwise
+ */
+bool interfaceExists(std::string_view interface)
 {
-    for (const auto& interface : manager->interfaces)
+    // Construct the sysfs path for the network interface
+    std::string path = "/sys/class/net/";
+    path += interface;
+    return std::filesystem::exists(path);
+}
+
+/**
+ * @brief configure internal interface based on pos
+ * @param internal interface name to configure ip
+ * @param position to configure the internal ip address
+ * @return true if ip address is configured, false otherwise
+ */
+bool configureInternalInterface(std::string_view internalInterface,
+                                uint64_t position)
+{
+    // Check if internal interface is configured
+    if (internalInterface.empty())
     {
-        if (interface.first == intfName)
-        {
-            return true;
-        }
+        return false;
     }
-    return false;
+
+    lg2::info("Configuring internal interface {INTF}", "INTF",
+              internalInterface);
+
+    if (!interfaceExists(internalInterface))
+    {
+        lg2::warning("Internal interface {INTF} not found in /sys/class/net",
+                     "INTF", internalInterface);
+        return false;
+    }
+
+    std::string ipAddress = std::format("9.6.28.{}", 100 + position);
+    constexpr uint8_t prefixLength = 24;
+
+    lg2::info("Assigning IP {IP} to internal {INTF} (pos {POS})", "IP",
+              ipAddress, "INTF", internalInterface, "POS", position);
+
+    try
+    {
+        phosphor::network::system::setIPAddress(std::string(internalInterface),
+                                                ipAddress, prefixLength);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Failed to assign IP to {INTF}: {ERROR}", "INTF",
+                   internalInterface, "ERROR", e.what());
+        return false;
+    }
 }
 
 bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
@@ -313,67 +360,8 @@ bool assignIPBasedOnPosition(sdbusplus::bus_t& bus)
             return false;
         }
         uint64_t position = positionOpt.value();
-
-        std::string targetInterface;
-        if (interfaceExists("eth2"))
-        {
-            targetInterface = "eth2";
-            lg2::info("eth2 interface found, will assign IP to eth2");
-        }
-        else if (interfaceExists("eth1"))
-        {
-            targetInterface = "eth1";
-            lg2::info("eth2 not found, will assign IP to eth1 instead");
-        }
-        else
-        {
-            lg2::error("Neither eth2 nor eth1 interface found");
-            return false;
-        }
-
-        std::string baseIP = "9.6.28.";
-        std::string ipAddress = baseIP + std::to_string(100 + position);
-        uint8_t prefixLength = 24;
-
-        lg2::info(
-            "Assigning IP {IP_ADDR}/{PREFIX} to {NET_INTF} based on position {POS}",
-            "IP_ADDR", ipAddress, "PREFIX", prefixLength, "NET_INTF",
-            targetInterface, "POS", position);
-
-        bool ipAssigned = false;
-        for (const auto& interface : manager->interfaces)
-        {
-            if (interface.first == targetInterface)
-            {
-                try
-                {
-                    interface.second->deleteAll();
-                    lg2::info("Successfully cleared all IPs from {NET_INTF}",
-                              "NET_INTF", targetInterface);
-                }
-                catch (const std::exception& e)
-                {
-                    lg2::warning("Failed to delete all IPs: {ERROR}", "ERROR",
-                                 e.what());
-                }
-
-                interface.second->ip(IP::Protocol::IPv4, ipAddress,
-                                     prefixLength, "");
-                lg2::info("Successfully assigned IP address to {NET_INTF}",
-                          "NET_INTF", targetInterface);
-                ipAssigned = true;
-                break;
-            }
-        }
-
-        if (!ipAssigned)
-        {
-            lg2::error("Failed to find interface {NET_INTF} in manager",
-                       "NET_INTF", targetInterface);
-            return false;
-        }
-
-        return true;
+        return configureInternalInterface(std::string_view(INTERNAL_INTERFACE),
+                                          position);
     }
     catch (const std::exception& e)
     {
