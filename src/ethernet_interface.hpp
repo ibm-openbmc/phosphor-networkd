@@ -239,6 +239,12 @@ class EthernetInterface : public Ifaces
 
     bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
     void disableDHCP(IP::Protocol protocol);
+    
+    /** @brief set conf file for LLDP
+     *  @param[in] value - lldp value of the interface.
+     */
+    bool emitLLDP(bool value) override;
+
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
     using EthernetInterfaceIntf::mtu;
@@ -247,6 +253,7 @@ class EthernetInterface : public Ifaces
 
     using EthernetInterfaceIntf::defaultGateway;
     using EthernetInterfaceIntf::defaultGateway6;
+    using EthernetInterfaceIntf::emitLLDP;
 
   protected:
     /** @brief get the NTP server list from the timsyncd dbus obj
