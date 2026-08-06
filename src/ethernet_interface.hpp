@@ -239,7 +239,7 @@ class EthernetInterface : public Ifaces
 
     bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
     void disableDHCP(IP::Protocol protocol);
-    
+
     /** @brief set conf file for LLDP
      *  @param[in] value - lldp value of the interface.
      */
