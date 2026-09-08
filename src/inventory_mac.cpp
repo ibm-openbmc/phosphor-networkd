@@ -21,6 +21,10 @@
 #include <string>
 #include <vector>
 
+#ifndef INTERNAL_INTERFACE
+#define INTERNAL_INTERFACE ""
+#endif
+
 namespace phosphor::network::inventory
 {
 
