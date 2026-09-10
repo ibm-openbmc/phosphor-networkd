@@ -15,7 +15,6 @@ option(
     type: 'boolean',
     description: 'Sync mac address with phosphor-inventory-manager',
 )
-option('lldp', type: 'boolean', description: 'Enable LLDP neighbor discovery')
 option(
     'hyp-nw-config',
     type: 'boolean',
@@ -36,4 +35,9 @@ option(
     type: 'boolean',
     description: 'Enable rbmc configuration on internal interface, assigns IP address using BMC position ',
 )
-option('lldp', type: 'boolean', description: 'Enable LLDP neighbor discovery')
+option(
+    'lldp',
+    type: 'boolean',
+    value: false,
+    description: 'Enable LLDP neighbor discovery',
+)
