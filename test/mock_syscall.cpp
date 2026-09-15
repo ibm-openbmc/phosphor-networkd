@@ -6,6 +6,7 @@
 #include <dlfcn.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
+#include <linux/sockios.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <netinet/in.h>

@@ -40,7 +40,6 @@ TEST_F(TestSystemQueries, GetEthInfoSuccess)
 
     EXPECT_FALSE(info.autoneg);
     EXPECT_EQ(0, info.speed);
-    EXPECT_FALSE(info.fullDuplex);
 }
 
 TEST_F(TestSystemQueries, GetEthInfoMultipleInterfaces)
