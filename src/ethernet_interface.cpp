@@ -824,6 +824,10 @@ void EthernetInterface::writeConfigurationFile()
         {
             lla.emplace_back("ipv6");
         }
+        else
+        {
+            lla.emplace_back("no");
+        }
 #else
         lla.emplace_back("no");
 #endif
