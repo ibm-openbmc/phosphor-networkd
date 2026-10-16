@@ -7,6 +7,8 @@
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
 #include <net/if.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
 #include <stdplus/fd/create.hpp>
@@ -14,11 +16,15 @@
 #include <stdplus/util/cexec.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <format>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_set>
+#include <variant>
 
 namespace phosphor::network::system
 {
