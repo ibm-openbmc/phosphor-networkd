@@ -19,6 +19,7 @@
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/lg2.hpp>
 #include <stdplus/fd/create.hpp>
+#include <stdplus/numeric/str.hpp>
 #include <stdplus/raw.hpp>
 #include <stdplus/str/cat.hpp>
 #include <stdplus/zstring.hpp>
@@ -30,6 +31,7 @@
 #include <format>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <string>
 #include <thread>
 #include <unordered_map>
