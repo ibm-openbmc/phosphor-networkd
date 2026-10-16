@@ -30,6 +30,7 @@ test_deps = [
     gtest,
     gmock,
     dependency('stdplus-gtest'),
+    dependency('sdeventplus'),
 ]
 
 test_lib = static_library(
