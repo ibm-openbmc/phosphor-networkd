@@ -12,7 +12,9 @@
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <net/if_arp.h>
+#include <sys/epoll.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <phosphor-logging/elog-errors.hpp>
 #include <phosphor-logging/lg2.hpp>
@@ -23,9 +25,13 @@
 #include <xyz/openbmc_project/Common/error.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <functional>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
@@ -80,6 +86,64 @@ template <typename Addr>
 static bool validIntfIP(Addr a) noexcept
 {
     return a.isUnicast() && !a.isLoopback();
+}
+
+EthernetInterface::NCSITimeoutWatch::NCSITimeoutWatch(EthernetInterface& intf,
+                                                      int fd) :
+    intf(intf),
+    io(sdeventplus::Event::get_default(), fd, EPOLLPRI | EPOLLERR,
+       std::bind(&NCSITimeoutWatch::callback, this, std::placeholders::_1,
+                 std::placeholders::_2, std::placeholders::_3))
+{}
+
+void EthernetInterface::NCSITimeoutWatch::callback(sdeventplus::source::IO&,
+                                                   int, uint32_t)
+{
+    char data[2];
+    auto r = read(io.get_fd(), data, sizeof(data));
+
+    if (r < 2)
+    {
+        lg2::error("Failed to read {INTERFACE} ncsi_timeout: {RC} from {FD}",
+                   "INTERFACE", intf.interfaceName(), "RC", r, "FD",
+                   io.get_fd());
+        return;
+    }
+
+    if (data[0] != '0')
+    {
+        lg2::warning("{INTERFACE} NCSI timeout, resetting interface",
+                     "INTERFACE", intf.interfaceName());
+
+        int fd = intf.handleNCSITimeout();
+        if (fd >= 0)
+        {
+            // NCSI timeout handling was a success, check if IPMI workaround
+            // needed
+            int rc = intf.handleIpmiOnNCSITimeout(intf.interfaceName());
+            if (rc)
+            {
+                lg2::warning("Error restarting IPMI");
+            }
+
+            close(io.get_fd());
+            io.set_fd(fd);
+            return;
+        }
+    }
+    else
+    {
+        lg2::info("{INTERFACE} spurious NCSI timeout wake up", "INTERFACE",
+                  intf.interfaceName());
+    }
+
+    // Must seek to zero otherwise the poll returns immediately
+    r = lseek(io.get_fd(), 0, SEEK_SET);
+    if (r < 0)
+    {
+        lg2::error("Failed to seek {INTERFACE} ncsi_timeout {RC}", "INTERFACE",
+                   intf.interfaceName(), "RC", r);
+    }
 }
 
 EthernetInterface::EthernetInterface(
@@ -145,6 +209,179 @@ EthernetInterface::EthernetInterface(
     {
         addStaticGateway(staticGateway);
     }
+
+    const std::filesystem::path dir = "/sys/class/net";
+    for (auto&& d : std::filesystem::directory_iterator(dir))
+    {
+        const std::filesystem::path dirPath = d.path();
+        std::filesystem::path ifindex = dirPath / "ifindex";
+        std::ifstream file(ifindex);
+        unsigned int i;
+
+        file >> i;
+        if (!file)
+        {
+            continue;
+        }
+
+        if (i == info.intf.idx)
+        {
+            ncsiTimeoutPath = dirPath / "ncsi_timeout";
+            int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+
+            if (fd >= 0)
+            {
+                std::error_code ec;
+                std::filesystem::path devPath = dirPath / "device";
+                std::filesystem::path device =
+                    std::filesystem::read_symlink(devPath, ec);
+
+                if (ec)
+                {
+                    lg2::warning("Failed to get device path from dir {DIR}",
+                                 "DIR", dirPath.string());
+                }
+
+                std::filesystem::path driver =
+                    std::filesystem::read_symlink(devPath / "driver");
+                ncsiWatchDriver = std::filesystem::canonical(devPath / driver);
+
+                ncsiWatchDeviceName = device.filename().string();
+
+                lg2::info(
+                    "Starting to watch for NCSI timeout on {INTERFACE} (device {DEVICE} driver {DRIVER}) with {FD}",
+                    "INTERFACE", *info.intf.name, "DEVICE",
+                    ncsiWatchDeviceName, "DRIVER", ncsiWatchDriver.string(),
+                    "FD", fd);
+
+                ncsiTimeoutWatch =
+                    std::make_unique<NCSITimeoutWatch>(*this, fd);
+            }
+            break;
+        }
+    }
+}
+
+int EthernetInterface::handleNCSITimeout()
+{
+    using namespace std::chrono_literals;
+
+    {
+        std::ofstream file(ncsiWatchDriver / "unbind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    {
+        std::ofstream file(ncsiWatchDriver / "bind");
+
+        file << ncsiWatchDeviceName;
+    }
+
+    std::this_thread::sleep_for(100ms);
+
+    int fd = open(ncsiTimeoutPath.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd >= 0)
+    {
+        lg2::info(
+            "Restarting watch for NCSI timeout on {INTERFACE} (device {DEVICE} driver {DRIVER})",
+            "INTERFACE", interfaceName(), "DEVICE", ncsiWatchDeviceName,
+            "DRIVER", ncsiWatchDriver.string());
+    }
+    else
+    {
+        lg2::warning(
+            "Failed to restart watch for NCSI timeout on {INTERFACE} (device {DEVICE} driver {DRIVER})",
+            "INTERFACE", interfaceName(), "DEVICE", ncsiWatchDeviceName,
+            "DRIVER", ncsiWatchDriver.string());
+    }
+
+    return fd;
+}
+
+bool EthernetInterface::isServiceActive(const std::string& serviceName)
+{
+    std::variant<std::string> serviceState;
+    sdbusplus::message::object_path unitPath;
+
+    auto method = bus.get().new_method_call(
+        "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+        "org.freedesktop.systemd1.Manager", "GetUnit");
+
+    method.append(serviceName);
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(unitPath);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in GetUnit call: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    method = bus.get().new_method_call(
+        "org.freedesktop.systemd1",
+        static_cast<const std::string&>(unitPath).c_str(),
+        "org.freedesktop.DBus.Properties", "Get");
+
+    method.append("org.freedesktop.systemd1.Unit", "ActiveState");
+
+    try
+    {
+        auto result = bus.get().call(method);
+        result.read(serviceState);
+    }
+    catch (const sdbusplus::exception_t& e)
+    {
+        lg2::error("Error in ActiveState Get: {ERROR}", "ERROR", e);
+        return false;
+    }
+
+    const auto& currentStateStr = std::get<std::string>(serviceState);
+    return currentStateStr == "active" || currentStateStr == "activating";
+}
+
+int EthernetInterface::handleIpmiOnNCSITimeout(const std::string& intfName)
+{
+    // Need to force the network IPMI service to restart after the unbind/bind
+    lg2::info("Handling IPMI On NCSI Timeout on {INTERFACE}", "INTERFACE",
+              intfName);
+
+    // Only run the IPMI workaround if the service is running
+    auto serviceName = std::format("phosphor-ipmi-net@{}.service", intfName);
+    if (isServiceActive(serviceName))
+    {
+        lg2::info("IPMI on {INTERFACE} is active so run the workaround",
+                  "INTERFACE", intfName);
+
+        // The workaround is to restart the service so it connects back up
+        // to the newly bound network interface
+        try
+        {
+            auto method = bus.get().new_method_call(
+                "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                "org.freedesktop.systemd1.Manager", "RestartUnit");
+            method.append(serviceName, "replace");
+            bus.get().call_noreply(method);
+        }
+        catch (const sdbusplus::exception_t& e)
+        {
+            lg2::error("Failed to restart service {SERVICE}: {ERROR}",
+                       "SERVICE", serviceName, "ERROR", e);
+            return -1;
+        }
+    }
+    else
+    {
+        lg2::info("IPMI on {INTERFACE} is not active so no workaround needed",
+                  "INTERFACE", intfName);
+    }
+
+    return 0;
 }
 
 void EthernetInterface::updateInfo(const InterfaceInfo& info, bool skipSignal)
