@@ -23,6 +23,9 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <map>
+#include <variant>
+#include <vector>
 
 namespace phosphor
 {
@@ -204,8 +207,8 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
         bus, *this, info, objPath.str, config, enabled);
     intf->loadNameServers(config);
     intf->loadNTPServers(config);
-    watchNTPServers(intf.get());
-    watchTimeSyncActiveState(intf.get());
+    watchNTPServers();
+    watchTimeSyncActiveState();
     auto ptr = intf.get();
     interfaces.insert_or_assign(*info.intf.name, std::move(intf));
     interfacesByIdx.insert_or_assign(info.intf.idx, ptr);
@@ -564,14 +567,28 @@ void Manager::reloadLLDPService()
     }
 }
 
-void Manager::watchNTPServers(EthernetInterface* intf)
+void Manager::reloadNTPServers()
 {
-    ntpServerMatch = std::make_unique<sdbusplus::bus::match::match>(
+    for (const auto& [name, intf] : interfaces)
+    {
+        config::Parser config(
+            config::pathForIntfConf(getConfDir(), intf->interfaceName()));
+        intf->loadNTPServers(config);
+    }
+}
+
+void Manager::watchNTPServers()
+{
+    if (ntpServerMatch)
+    {
+        return;
+    }
+    ntpServerMatch = std::make_unique<sdbusplus::bus::match_t>(
         bus,
         "type='signal',member='PropertiesChanged',interface='org.freedesktop."
         "DBus.Properties',path='/org/freedesktop/timesync1',"
         "arg0='org.freedesktop.timesync1.Manager'",
-        [this, intf](sdbusplus::message::message& msg) {
+        [this](sdbusplus::message_t& msg) {
             if (msg.is_method_error())
             {
                 return;
@@ -589,22 +606,24 @@ void Manager::watchNTPServers(EthernetInterface* intf)
                 if (it != changedProperties.end())
                 {
                     lg2::info("NTP server ip updated in timesyncd");
-                    config::Parser config(config::pathForIntfConf(
-                        getConfDir(), intf->interfaceName()));
-                    intf->loadNTPServers(config);
+                    reloadNTPServers();
                 }
             }
         });
 }
 
-void Manager::watchTimeSyncActiveState(EthernetInterface* intf)
+void Manager::watchTimeSyncActiveState()
 {
-    activeStateMatch = std::make_unique<sdbusplus::bus::match::match>(
+    if (activeStateMatch)
+    {
+        return;
+    }
+    activeStateMatch = std::make_unique<sdbusplus::bus::match_t>(
         bus,
         "type='signal',member='PropertiesChanged',interface='org.freedesktop."
         "DBus.Properties',path='/org/freedesktop/systemd1/unit/systemd_2dtimesyncd_2eservice',"
         "arg0='org.freedesktop.systemd1.Unit'",
-        [this, intf](sdbusplus::message::message& msg) {
+        [this](sdbusplus::message_t& msg) {
             if (msg.is_method_error())
             {
                 return;
@@ -623,9 +642,7 @@ void Manager::watchTimeSyncActiveState(EthernetInterface* intf)
                     std::string activeState = std::get<std::string>(it->second);
                     if (activeState == "active" || activeState == "inactive")
                     {
-                        config::Parser config(config::pathForIntfConf(
-                            getConfDir(), intf->interfaceName()));
-                        intf->loadNTPServers(config);
+                        reloadNTPServers();
                     }
                 }
             }

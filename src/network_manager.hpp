@@ -169,16 +169,20 @@ class Manager : public ManagerIface
     void createInterface(const AllIntfInfo& info, bool enabled);
 
   private:
+    /** @brief Reload the NTP servers of all interfaces from timesyncd.
+     */
+    void reloadNTPServers();
+
     /** @brief Function used to watch change in NTP server.
      */
-    void watchNTPServers(EthernetInterface* intf);
+    void watchNTPServers();
 
     /** @brief Function to watch status of systemd timesyncd.
      */
-    void watchTimeSyncActiveState(EthernetInterface* intf);
+    void watchTimeSyncActiveState();
 
-    std::unique_ptr<sdbusplus::bus::match::match> ntpServerMatch;
-    std::unique_ptr<sdbusplus::bus::match::match> activeStateMatch;
+    std::unique_ptr<sdbusplus::bus::match_t> ntpServerMatch;
+    std::unique_ptr<sdbusplus::bus::match_t> activeStateMatch;
 };
 
 } // namespace network
