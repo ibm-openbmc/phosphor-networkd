@@ -63,7 +63,7 @@ biosTableRetAttrValueType HypEthInterface::getAttrFromBiosTable(
 
 void HypEthInterface::watchBaseBiosTable()
 {
-    auto BIOSAttrUpdate = [this](sdbusplus::message::message& m) {
+    auto BIOSAttrUpdate = [this](sdbusplus::message_t& m) {
         std::map<std::string, std::variant<BiosBaseTableType>>
             interfacesProperties;
 
@@ -384,7 +384,7 @@ void HypEthInterface::watchBaseBiosTable()
     };
 
     phosphor::network::matchBIOSAttrUpdate = std::make_unique<
-        sdbusplus::bus::match::match>(
+        sdbusplus::bus::match_t>(
         bus,
         "type='signal',member='PropertiesChanged',interface='org.freedesktop."
         "DBus.Properties',arg0namespace='xyz.openbmc_project.BIOSConfig."
@@ -493,7 +493,7 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth0/v4",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(
+                              sdbusplus::object_path(
                                   objectPath.str + "/ipv4/addr0"),
                               *this, *ifaddrv4, "0.0.0.0",
                               HypIP::AddressOrigin::Static, intfLabel));
@@ -502,7 +502,7 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth0/v6",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(
+                              sdbusplus::object_path(
                                   objectPath.str + "/ipv6/addr0"),
                               *this, *ifaddrv6,
                               "::", HypIP::AddressOrigin::Static, intfLabel));
@@ -515,7 +515,7 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth1/v4",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(
+                              sdbusplus::object_path(
                                   objectPath.str + "/ipv4/addr0"),
                               *this, *ifaddrv4, "0.0.0.0",
                               HypIP::AddressOrigin::Static, intfLabel));
@@ -524,7 +524,7 @@ void HypEthInterface::createIPAddressObjects()
             addrs.emplace("eth1/v6",
                           std::make_unique<HypIPAddress>(
                               bus,
-                              sdbusplus::message::object_path(
+                              sdbusplus::object_path(
                                   objectPath.str + "/ipv6/addr0"),
                               *this, *ifaddrv6,
                               "::", HypIP::AddressOrigin::Static, intfLabel));
@@ -631,7 +631,7 @@ void HypEthInterface::createIPAddressObjects()
         addrs.emplace(ipAddr,
                       std::make_unique<HypIPAddress>(
                           bus,
-                          sdbusplus::message::object_path(
+                          sdbusplus::object_path(
                               objectPath.str + "/" + protocol + "/" + ipObjId),
                           *this, *ifaddr, ipGateway, ipOrigin, intfLabel));
     }
@@ -930,7 +930,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
     if (intfLabel == "")
     {
         lg2::error("Wrong interface name");
-        return sdbusplus::message::details::string_path_wrapper();
+        return sdbusplus::object_path();
     }
 
     const std::string ipObjId = "addr0";
@@ -966,7 +966,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
             (gateway == ipObjGateway))
         {
             lg2::info("Trying to set same IP properties");
-            return sdbusplus::message::object_path(objPath);
+            return sdbusplus::object_path(objPath);
         }
         auto addrKey = addrs.extract(addr.first);
         addrKey.key() = ipaddress;
@@ -979,7 +979,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
         "GATEWAY", gateway, "PREFIXLENGTH", prefixLength);
 
     addrs[ipaddress] = std::make_unique<HypIPAddress>(
-        bus, sdbusplus::message::object_path(objPath), *this, *ifaddr, gateway,
+        bus, sdbusplus::object_path(objPath), *this, *ifaddr, gateway,
         origin, intfLabel);
 
     PendingAttributesType pendingAttributes;
@@ -1008,7 +1008,7 @@ ObjectPath HypEthInterface::ip(HypIP::Protocol protType, std::string ipaddress,
 
     ipObj->updateBiosPendingAttrs(pendingAttributes);
 
-    return sdbusplus::message::object_path(objPath);
+    return sdbusplus::object_path(objPath);
 }
 
 HypEthInterface::DHCPConf HypEthInterface::dhcpEnabled(DHCPConf value)

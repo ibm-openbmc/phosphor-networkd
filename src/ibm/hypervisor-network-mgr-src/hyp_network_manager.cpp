@@ -250,7 +250,7 @@ void HypNetworkMgr::createIfObjects()
     interfaces.emplace(
         "eth0",
         std::make_unique<HypEthInterface>(
-            bus, sdbusplus::message::object_path(objectPath.str + "/eth0"),
+            bus, sdbusplus::object_path(objectPath.str + "/eth0"),
             "eth0", *this));
     interfaces["eth0"]->createIPAddressObjects();
     if (if1Present)
@@ -259,7 +259,7 @@ void HypNetworkMgr::createIfObjects()
         interfaces.emplace(
             "eth1",
             std::make_unique<HypEthInterface>(
-                bus, sdbusplus::message::object_path(objectPath.str + "/eth1"),
+                bus, sdbusplus::object_path(objectPath.str + "/eth1"),
                 "eth1", *this));
         interfaces["eth1"]->createIPAddressObjects();
     }
@@ -273,7 +273,7 @@ void HypNetworkMgr::createSysConfObj()
 {
     systemConf.reset(nullptr);
     this->systemConf = std::make_unique<HypSysConfig>(
-        bus, sdbusplus::message::object_path(objectPath.str + "/config"),
+        bus, sdbusplus::object_path(objectPath.str + "/config"),
         *this);
 }
 

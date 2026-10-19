@@ -56,7 +56,7 @@ std::vector<std::string> Manager::getInterfaces()
         auto reply = bus.call(method);
 
         std::vector<
-            std::tuple<int32_t, std::string, sdbusplus::message::object_path>>
+            std::tuple<int32_t, std::string, sdbusplus::object_path>>
             links;
         reply.read(links);
 

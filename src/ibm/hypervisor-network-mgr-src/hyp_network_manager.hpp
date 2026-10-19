@@ -161,7 +161,7 @@ class HypNetworkMgr
     stdplus::PinnedRef<sdbusplus::bus_t> bus;
 
     /** @brief object path */
-    sdbusplus::message::object_path objectPath;
+    sdbusplus::object_path objectPath;
 
     /** @brief pointer to system conf object. */
     std::unique_ptr<HypSysConfig> systemConf = nullptr;
