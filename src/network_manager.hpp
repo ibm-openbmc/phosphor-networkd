@@ -167,6 +167,22 @@ class Manager : public ManagerIface
 
     /** @brief Creates the interface in the maps */
     void createInterface(const AllIntfInfo& info, bool enabled);
+
+  private:
+    /** @brief Reload the NTP servers of all interfaces from timesyncd.
+     */
+    void reloadNTPServers();
+
+    /** @brief Function used to watch change in NTP server.
+     */
+    void watchNTPServers();
+
+    /** @brief Function to watch status of systemd timesyncd.
+     */
+    void watchTimeSyncActiveState();
+
+    std::unique_ptr<sdbusplus::bus::match_t> ntpServerMatch;
+    std::unique_ptr<sdbusplus::bus::match_t> activeStateMatch;
 };
 
 } // namespace network
