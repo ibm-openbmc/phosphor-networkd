@@ -199,7 +199,28 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
                    info.intf.idx);
         return;
     }
-    config::Parser config(config::pathForIntfConf(confDir, *info.intf.name));
+    auto confPath = config::pathForIntfConf(confDir, *info.intf.name);
+    config::Parser config;
+    std::error_code ec;
+    if (std::filesystem::exists(confPath, ec))
+    {
+        config.setFile(confPath);
+    }
+    else
+    {
+        // No per-interface config yet (first boot or post-factory-reset).
+        // Seed from the interface-specific default file if one exists so that
+        // the first writeConfigurationFile() preserves the intended defaults
+        // (e.g. DHCP=false for eth2) instead of using hardcoded fallbacks.
+        auto defaultPath =
+            std::filesystem::path("/usr/lib/systemd/network") /
+            stdplus::strCat("60-phosphor-networkd-"sv, *info.intf.name,
+                            "-default.network"sv);
+        if (std::filesystem::exists(defaultPath, ec))
+        {
+            config.setFile(defaultPath);
+        }
+    }
     auto intf = std::make_unique<EthernetInterface>(
         bus, *this, info, objPath.str, config, enabled);
     intf->loadNameServers(config);
