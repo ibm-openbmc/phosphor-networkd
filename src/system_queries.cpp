@@ -7,6 +7,8 @@
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
 #include <net/if.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <phosphor-logging/lg2.hpp>
 #include <stdplus/fd/create.hpp>
@@ -14,11 +16,17 @@
 #include <stdplus/util/cexec.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cerrno>
+#include <cstring>
 #include <format>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_set>
+#include <variant>
+#include <vector>
 
 namespace phosphor::network::system
 {
@@ -96,78 +104,63 @@ EthInfo getEthInfo(stdplus::zstring_view ifname)
         .value_or(EthInfo{});
 }
 
-/**
- * @brief Check if a network interface exists
- * @param ifname Interface name to check
- * @return true if interface exists, false otherwise
- */
-static bool interfaceExists(std::string_view ifname)
+/** @brief Validate IPv4 address string via stdplus.
+ *  @throws std::invalid_argument on bad address */
+static stdplus::In4Addr validateIPv4Address(std::string_view ipAddress)
 {
-    auto ifr = makeIFReq(ifname);
     try
     {
-        getIFSock().ioctl(SIOCGIFFLAGS, &ifr);
-        return true;
+        return stdplus::fromStr<stdplus::In4Addr>(ipAddress);
     }
-    catch (const std::system_error& e)
-    {
-        lg2::error("Interface does not exist: {INTERFACE}, error: {ERROR}",
-                   "INTERFACE", ifname, "ERROR", e.what());
-        return false;
-    }
-}
-
-static struct in_addr validateIPv4Address(std::string_view ipAddress)
-{
-    struct in_addr addr;
-    // inet_pton requires null-terminated string
-    std::string ipStr(ipAddress);
-    if (inet_pton(AF_INET, ipStr.c_str(), &addr) != 1)
+    catch (const std::exception&)
     {
         throw std::invalid_argument(
-            std::format("Invalid IP address: {}", ipAddress));
+            std::string("Invalid IPv4 address: ") + std::string(ipAddress));
     }
-    return addr;
 }
 
-/**
- * @brief Calculate netmask from prefix length
- * @param prefixLength Prefix length (0-32)
- * @return in_addr structure with the netmask
- */
-static struct in_addr calculateNetmask(uint8_t prefixLength)
+/** @brief Validate IPv6 address string via stdplus.
+ *  @throws std::invalid_argument on bad address */
+static stdplus::In6Addr validateIPv6Address(std::string_view ipAddress)
 {
-    if (prefixLength == 0 || prefixLength == 32 || prefixLength > 32)
+    try
+    {
+        return stdplus::fromStr<stdplus::In6Addr>(ipAddress);
+    }
+    catch (const std::exception&)
     {
         throw std::invalid_argument(
-            std::format("Invalid prefix length: {}", prefixLength));
+            std::string("Invalid IPv6 address: ") + std::string(ipAddress));
     }
-
-    struct in_addr netmask;
-    uint32_t mask = htonl(0xFFFFFFFFU << (32 - prefixLength));
-    netmask.s_addr = mask;
-    return netmask;
 }
 
-/**
- * @brief Calculate broadcast address
- * @param addr IP address
- * @param netmask Network mask
- * @return in_addr structure with the broadcast address
- */
-static struct in_addr calculateBroadcast(struct in_addr addr,
-                                         struct in_addr netmask)
+/** @brief Validate IPv6 prefix length (range 1-128).
+ *  @throws std::invalid_argument if prefix is 0 or > 128 */
+static void validateIPv6Prefix(uint8_t prefixLength)
 {
-    struct in_addr bcast;
-    bcast.s_addr = (addr.s_addr & netmask.s_addr) | ~netmask.s_addr;
-    return bcast;
+    if (prefixLength == 0 || prefixLength > 128)
+    {
+        throw std::invalid_argument(
+            std::string("Invalid IPv6 prefix length: ") +
+            std::to_string(prefixLength) + " -- must be 1-128");
+    }
 }
 
-/**
- * @brief Validate interface name
- * @param ifname Interface name to validate
- * @throws std::system_error if name is empty or exceeds IFNAMSIZ-1
- */
+/** @brief Validate IPv4 prefix length (range 1-31).
+ *  @throws std::invalid_argument if prefix is 0 or >= 32 */
+static void validateIPv4Prefix(uint8_t prefixLength)
+{
+    if (prefixLength == 0 || prefixLength >= 32)
+    {
+        throw std::invalid_argument(
+            std::string("Invalid IPv4 prefix length: ") +
+            std::to_string(prefixLength) +
+            " -- must be 1-31 for interface address assignment");
+    }
+}
+
+/** @brief Validate interface name length.
+ *  @throws std::system_error if empty or exceeds IFNAMSIZ-1 */
 static void validateInterfaceName(std::string_view ifname)
 {
     if (ifname.empty() || ifname.length() > IFNAMSIZ - 1)
@@ -179,94 +172,340 @@ static void validateInterfaceName(std::string_view ifname)
 }
 
 /**
- * @brief Set sockaddr_in structure with IPv4 address
- * @param sa Reference to sockaddr structure to populate
- * @param addr IPv4 address to set
+ * @brief Send a single RTM_NEWADDR or RTM_DELADDR message and wait for ACK.
+ *        Uses netlink::detail::performRequest (sendmsg/recvmsg)
+ *
+ * Shared by setIPV4Address, setIPV6Address, deleteIPv4, deleteIPv6
+ *
+ * @param type      RTM_NEWADDR or RTM_DELADDR
+ * @param nlFlags   Extra NLM_F_* flags (e.g. NLM_F_CREATE|NLM_F_REPLACE)
+ * @param family    AF_INET or AF_INET6
+ * @param ifidx     Interface index
+ * @param prefixLen Prefix length
+ * @param rtaType   IFA_LOCAL (IPv4) or IFA_ADDRESS (IPv6)
+ * @param addrPtr   Pointer to in_addr or in6_addr
+ * @param addrLen   sizeof(in_addr) or sizeof(in6_addr)
+ * @param scope     RT_SCOPE_UNIVERSE for set; passed through for delete
+ * @return true on success, false on failure (error already logged)
  */
-static void setSockAddrIn(struct sockaddr& sa, const struct in_addr& addr)
+static bool netlinkAddrRequest(
+    uint16_t type, uint16_t nlFlags, uint8_t family, unsigned ifidx,
+    uint8_t prefixLen, uint16_t rtaType, const void* addrPtr, size_t addrLen,
+    uint8_t scope = RT_SCOPE_UNIVERSE)
 {
-    auto* sin = reinterpret_cast<struct sockaddr_in*>(&sa);
-    sin->sin_family = AF_INET;
-    sin->sin_addr = addr;
+    struct
+    {
+        nlmsghdr nlh;
+        ifaddrmsg ifa;
+        char buf[256];
+    } req{};
+
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(ifaddrmsg));
+    req.nlh.nlmsg_type = type;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | nlFlags;
+    req.ifa.ifa_family = family;
+    req.ifa.ifa_index = ifidx;
+    req.ifa.ifa_prefixlen = prefixLen;
+    req.ifa.ifa_scope = scope;
+
+    rtattr* rta = reinterpret_cast<rtattr*>(req.buf);
+    rta->rta_type = rtaType;
+    rta->rta_len = RTA_LENGTH(addrLen);
+    memcpy(RTA_DATA(rta), addrPtr, addrLen);
+    req.nlh.nlmsg_len += rta->rta_len;
+
+    // For IPv4 RTM_NEWADDR also set IFA_ADDRESS and IFA_BROADCAST
+    if (type == RTM_NEWADDR && family == AF_INET)
+    {
+        rta = reinterpret_cast<rtattr*>(req.buf + RTA_ALIGN(rta->rta_len));
+        rta->rta_type = IFA_ADDRESS;
+        rta->rta_len = RTA_LENGTH(addrLen);
+        memcpy(RTA_DATA(rta), addrPtr, addrLen);
+        req.nlh.nlmsg_len += rta->rta_len;
+
+        // Set IFA_BROADCAST only for prefix lengths < 31.
+        // /31 is a point-to-point link (RFC 3021) with only 2 host
+        // addresses and no broadcast address.
+        if (prefixLen < 31)
+        {
+            const uint32_t mask = htonl(~0u << (32 - prefixLen));
+            const uint32_t bcast =
+                (*reinterpret_cast<const uint32_t*>(addrPtr) & mask) | ~mask;
+            rta = reinterpret_cast<rtattr*>(req.buf + RTA_ALIGN(rta->rta_len));
+            rta->rta_type = IFA_BROADCAST;
+            rta->rta_len = RTA_LENGTH(sizeof(uint32_t));
+            memcpy(RTA_DATA(rta), &bcast, sizeof(uint32_t));
+            req.nlh.nlmsg_len += rta->rta_len;
+        }
+    }
+
+    try
+    {
+        netlink::detail::performRequest(
+            NETLINK_ROUTE, &req, req.nlh.nlmsg_len,
+            [&](const nlmsghdr& hdr, std::string_view data) {
+                if (hdr.nlmsg_type != NLMSG_ERROR)
+                    return;
+                const auto& err =
+                    stdplus::raw::refFrom<nlmsgerr, stdplus::raw::Aligned>(
+                        data);
+                // EADDRNOTAVAIL on delete = address already gone, OK
+                if (err.error != 0 &&
+                    !(type == RTM_DELADDR && err.error == -EADDRNOTAVAIL))
+                {
+                    throw std::system_error(-err.error, std::generic_category(),
+                                            "netlinkAddrRequest");
+                }
+            });
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Netlink addr request failed: {ERROR}", "ERROR", e.what());
+        return false;
+    }
+    return true;
 }
 
 /**
- * @brief Set IP address on a network interface
- * @param ifname Interface name (e.g., "eth0")
- * @param ipAddress IPv4 address in dotted-decimal notation (e.g.,
- * "192.168.1.100")
- * @param prefixLength CIDR prefix length (1-31, rejects 0, 32, and >32)
- * @throws std::system_error if interface doesn't exist or ioctl fails
- * @throws std::invalid_argument if IP address format is invalid or prefix
- * length is invalid
+ * @brief Validate interface name, confirm it exists, and return its index.
+ * @throws std::system_error      if name is invalid or interface not found
  */
-void setIPAddress(std::string_view ifname, std::string_view ipAddress,
-                  uint8_t prefixLength)
+static unsigned resolveIfIndex(std::string_view ifname)
+{
+    validateInterfaceName(ifname);
+    unsigned ifidx = if_nametoindex(std::string(ifname).c_str());
+    if (ifidx == 0)
+    {
+        throw std::system_error(
+            errno, std::generic_category(),
+            std::format("if_nametoindex failed for {}", ifname));
+    }
+    return ifidx;
+}
+
+/**
+ * @brief Enumerate all addresses of @p family on @p ifidx via RTM_GETADDR
+ *        and delete each one via RTM_DELADDR.
+ *        Uses netlink::detail::performRequest (sendmsg/recvmsg).
+ *
+ * @return true if all deletions succeeded (no addresses = success)
+ */
+static bool flushAddresses(uint8_t family, unsigned ifidx, uint16_t rtaType,
+                           size_t addrLen)
+{
+    struct
+    {
+        nlmsghdr nlh;
+        ifaddrmsg ifa;
+    } req{};
+    req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(ifaddrmsg));
+    req.nlh.nlmsg_type = RTM_GETADDR;
+    req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    req.ifa.ifa_family = family;
+    req.ifa.ifa_index = ifidx;
+
+    struct AddrEntry
+    {
+        std::array<uint8_t, sizeof(in6_addr)> addr;
+        uint8_t pfx;
+    };
+    std::vector<AddrEntry> toDelete;
+
+    try
+    {
+        netlink::detail::performRequest(
+            NETLINK_ROUTE, &req, req.nlh.nlmsg_len,
+            [&](const nlmsghdr& hdr, std::string_view data) {
+                if (hdr.nlmsg_type != RTM_NEWADDR)
+                    return;
+                auto view = data;
+                const auto& ifa = netlink::extractRtData<ifaddrmsg>(view);
+                if (ifa.ifa_family != family || ifa.ifa_index != ifidx)
+                    return;
+                while (!view.empty())
+                {
+                    auto [rta, rdata] = netlink::extractRtAttr(view);
+                    if (rta.rta_type == rtaType && rdata.size() >= addrLen)
+                    {
+                        AddrEntry e{};
+                        memcpy(e.addr.data(), rdata.data(), addrLen);
+                        e.pfx = ifa.ifa_prefixlen;
+                        toDelete.push_back(e);
+                    }
+                }
+            });
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("flushAddresses: RTM_GETADDR failed: {ERROR}", "ERROR",
+                   e.what());
+        return false;
+    }
+
+    bool ok = true;
+    for (const auto& e : toDelete)
+    {
+        lg2::info("Flushing address (family={FAM}) on ifidx {NET_IFIDX}", "FAM",
+                  family, "NET_IFIDX", ifidx);
+        if (!netlinkAddrRequest(RTM_DELADDR, 0, family, ifidx, e.pfx, rtaType,
+                                e.addr.data(), addrLen))
+        {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+/** @brief Flush all existing IPv4 addresses from an interface.
+ *         Equivalent to "ip addr flush dev <ifname>".
+ *         Call before setIPV4Address() to ensure a clean slate.
+ *  @param ifidx  Interface index (from if_nametoindex)
+ */
+bool deleteIPv4(unsigned ifidx)
+{
+    if (ifidx == 0)
+    {
+        lg2::warning("deleteIPv4: invalid ifidx 0 -- skipping");
+        return false;
+    }
+    return flushAddresses(AF_INET, ifidx, IFA_LOCAL, sizeof(in_addr));
+}
+
+/** @brief Flush ALL existing IPv6 addresses from an interface,
+ *         including link-local (fe80::) addresses -- equivalent to
+ *         "ip -6 addr flush dev <ifname>".
+ *         Call before setIPV6Address() to ensure a clean slate.
+ *         Note: if future callers need to preserve link-local addresses,
+ *         a flag can be added to skip IFA_F_PERMANENT/scope checks.
+ *  @param ifidx  Interface index (from if_nametoindex)
+ */
+bool deleteIPv6(unsigned ifidx)
+{
+    if (ifidx == 0)
+    {
+        lg2::warning("deleteIPv6: invalid ifidx 0 -- skipping");
+        return false;
+    }
+    return flushAddresses(AF_INET6, ifidx, IFA_ADDRESS, sizeof(in6_addr));
+}
+
+/**
+ * @brief Set an IPv4 address on an ignored interface via RTM_NEWADDR.
+ *        Caller is responsible for flushing stale addresses first via
+ *        deleteIPv4() if needed.
+ *
+ * @param ifname       Interface name (e.g. "eth2")
+ * @param ipAddress    IPv4 address string (e.g. "9.6.1.100")
+ * @param prefixLength CIDR prefix length (1-31)
+ * @throws std::system_error     if interface doesn't exist
+ * @throws std::invalid_argument if address or prefix is invalid
+ * @throws std::runtime_error    if netlink operation fails
+ */
+void setIPV4Address(std::string_view ifname, std::string_view ipAddress,
+                    uint8_t prefixLength)
 {
     try
     {
-        // Validate interface name
-        validateInterfaceName(ifname);
+        const stdplus::In4Addr addrTyped = validateIPv4Address(ipAddress);
+        struct in_addr addr = static_cast<in_addr>(addrTyped);
+        validateIPv4Prefix(prefixLength);
+        unsigned ifidx = resolveIfIndex(ifname);
 
-        if (!interfaceExists(ifname))
+        lg2::info("Setting IPv4 {NET_IP}/{PREFIX} on {NET_INTF} via rtnetlink",
+                  "NET_IP", ipAddress, "PREFIX", prefixLength, "NET_INTF",
+                  ifname);
+
+        if (!netlinkAddrRequest(RTM_NEWADDR, NLM_F_CREATE | NLM_F_REPLACE,
+                                AF_INET, ifidx, prefixLength, IFA_LOCAL, &addr,
+                                sizeof(in_addr)))
         {
-            throw std::system_error(
-                std::make_error_code(std::errc::no_such_device),
-                std::format("Interface {} does not exist", ifname));
+            throw std::runtime_error(
+                std::format("RTM_NEWADDR failed for {} {}/{}", ifname,
+                            ipAddress, prefixLength));
         }
 
-        // Validate IP address and calculate network parameters
-        struct in_addr addr = validateIPv4Address(ipAddress);
-        struct in_addr netmask = calculateNetmask(prefixLength);
-        struct in_addr bcast = calculateBroadcast(addr, netmask);
-
-        // Prepare ifreq structure
-        auto ifr = makeIFReq(ifname);
-
-        // Set IP address
-        setSockAddrIn(ifr.ifr_addr, addr);
-        lg2::info("Setting IP {NET_IP} on {NET_INTF}", "NET_IP", ipAddress,
-                  "NET_INTF", ifname);
-        getIFSock().ioctl(SIOCSIFADDR, &ifr);
-
-        // Set netmask
-        setSockAddrIn(ifr.ifr_netmask, netmask);
-        lg2::info("Setting netmask /{PREFIX} on {NET_INTF}", "PREFIX",
-                  prefixLength, "NET_INTF", ifname);
-        getIFSock().ioctl(SIOCSIFNETMASK, &ifr);
-
-        // Set broadcast address (non-critical)
-        setSockAddrIn(ifr.ifr_broadaddr, bcast);
-        try
-        {
-            getIFSock().ioctl(SIOCSIFBRDADDR, &ifr);
-        }
-        catch (const std::system_error& e)
-        {
-            lg2::warning("Failed to set broadcast on {INTF}: {ERROR}", "INTF",
-                         ifname, "ERROR", e.what());
-        }
-
-        lg2::info("Successfully configured IP address on {NET_INTF}",
-                  "NET_INTF", ifname);
+        lg2::info("Successfully set IPv4 {NET_IP}/{PREFIX} on {NET_INTF}",
+                  "NET_IP", ipAddress, "PREFIX", prefixLength, "NET_INTF",
+                  ifname);
     }
     catch (const std::invalid_argument& e)
     {
-        lg2::error("Invalid IP configuration for {INTF}: {ERROR}", "INTF",
-                   ifname, "ERROR", e.what());
+        lg2::error("Invalid IPv4 config for {INTF}: {ERROR}", "INTF", ifname,
+                   "ERROR", e.what());
         throw;
     }
     catch (const std::system_error& e)
     {
-        lg2::error("Failed to configure IP on {INTF}: {ERROR}", "INTF", ifname,
+        lg2::error("Failed to set IPv4 on {INTF}: {ERROR}", "INTF", ifname,
                    "ERROR", e.what());
         throw std::system_error(
             e.code(),
-            std::format("Failed to configure IP on {}: {}", ifname, e.what()));
+            std::format("Failed to set IPv4 on {}: {}", ifname, e.what()));
     }
     catch (const std::exception& e)
     {
-        lg2::error("Unexpected error configuring IP on {INTF}: {ERROR}", "INTF",
+        lg2::error("Unexpected error setting IPv4 on {INTF}: {ERROR}", "INTF",
+                   ifname, "ERROR", e.what());
+        throw;
+    }
+}
+
+/**
+ * @brief Set an IPv6 address on an ignored interface via RTM_NEWADDR.
+ *        Caller is responsible for flushing stale addresses first via
+ *        deleteIPv6() if needed.
+ *
+ * @param ifname      Interface name (e.g. "eth2")
+ * @param ipAddress   IPv6 address string (e.g. "2001:db8::1")
+ * @param prefixLength CIDR prefix length (1-128)
+ * @throws std::system_error     if interface doesn't exist
+ * @throws std::invalid_argument if address or prefix is invalid
+ * @throws std::runtime_error    if netlink operation fails
+ */
+void setIPV6Address(std::string_view ifname, std::string_view ipAddress,
+                    uint8_t prefixLength)
+{
+    try
+    {
+        validateIPv6Prefix(prefixLength);
+        const stdplus::In6Addr addrTyped = validateIPv6Address(ipAddress);
+        in6_addr addr = static_cast<in6_addr>(addrTyped);
+        unsigned ifidx = resolveIfIndex(ifname);
+
+        lg2::info("Setting IPv6 {NET_IP}/{PREFIX} on {NET_INTF} via rtnetlink",
+                  "NET_IP", ipAddress, "PREFIX", prefixLength, "NET_INTF",
+                  ifname);
+
+        if (!netlinkAddrRequest(RTM_NEWADDR, NLM_F_CREATE | NLM_F_REPLACE,
+                                AF_INET6, ifidx, prefixLength, IFA_ADDRESS,
+                                &addr, sizeof(in6_addr)))
+        {
+            throw std::runtime_error(
+                std::format("RTM_NEWADDR IPv6 failed for {} {}/{}", ifname,
+                            ipAddress, prefixLength));
+        }
+
+        lg2::info("Successfully set IPv6 {NET_IP}/{PREFIX} on {NET_INTF}",
+                  "NET_IP", ipAddress, "PREFIX", prefixLength, "NET_INTF",
+                  ifname);
+    }
+    catch (const std::invalid_argument& e)
+    {
+        lg2::error("Invalid IPv6 config for {INTF}: {ERROR}", "INTF", ifname,
+                   "ERROR", e.what());
+        throw;
+    }
+    catch (const std::system_error& e)
+    {
+        lg2::error("Failed to set IPv6 on {INTF}: {ERROR}", "INTF", ifname,
+                   "ERROR", e.what());
+        throw std::system_error(
+            e.code(),
+            std::format("Failed to set IPv6 on {}: {}", ifname, e.what()));
+    }
+    catch (const std::exception& e)
+    {
+        lg2::error("Unexpected error setting IPv6 on {INTF}: {ERROR}", "INTF",
                    ifname, "ERROR", e.what());
         throw;
     }
@@ -309,6 +548,101 @@ void deleteIntf(unsigned idx)
             throw std::runtime_error(
                 std::format("Failed to delete `{}`: {}", idx, strerror(err)));
         });
+}
+
+bool deleteLinkLocalIPv4ViaNetlink(unsigned ifidx, const stdplus::SubnetAny& ip)
+{
+    bool success = false;
+
+    std::visit(
+        [&](const auto& wrappedAddr) {
+            using T = std::decay_t<decltype(wrappedAddr)>;
+            if constexpr (std::is_same_v<T, stdplus::In4Addr>)
+            {
+                in_addr addr = static_cast<in_addr>(wrappedAddr);
+
+                if ((ntohl(addr.s_addr) & 0xFFFF0000) != 0xA9FE0000)
+                    return;
+
+                int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+                if (sock < 0)
+                {
+                    lg2::error("Failed to open the NETLINK_ROUTE socket");
+                    return;
+                }
+
+                sockaddr_nl nladdr{};
+                memset(&nladdr, 0, sizeof(nladdr));
+                nladdr.nl_family = AF_NETLINK;
+                nladdr.nl_pid = 0;
+                nladdr.nl_groups = 0;
+
+                if (bind(sock, reinterpret_cast<sockaddr*>(&nladdr),
+                         sizeof(nladdr)) < 0)
+                {
+                    lg2::error("Failed to bind the NETLINK_ROUTE socket");
+                    close(sock);
+                    return;
+                }
+
+                struct
+                {
+                    nlmsghdr nlh;
+                    ifaddrmsg ifa;
+                    char buf[256];
+                } req{};
+
+                req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(ifaddrmsg));
+                req.nlh.nlmsg_type = RTM_DELADDR;
+                req.nlh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+                req.ifa.ifa_family = AF_INET;
+                req.ifa.ifa_index = ifidx;
+                req.ifa.ifa_prefixlen = ip.getPfx();
+
+                rtattr* rta = reinterpret_cast<rtattr*>(req.buf);
+                rta->rta_type = IFA_LOCAL;
+                rta->rta_len = RTA_LENGTH(sizeof(in_addr));
+                std::memcpy(RTA_DATA(rta), &addr, sizeof(in_addr));
+
+                req.nlh.nlmsg_len += rta->rta_len;
+
+                const ssize_t sent = send(sock, &req, req.nlh.nlmsg_len, 0);
+                if (sent != static_cast<ssize_t>(req.nlh.nlmsg_len))
+                {
+                    lg2::error(
+                        "Failed to send netlink message for RTM_DELADDR");
+                    close(sock);
+                    return;
+                }
+
+                std::array<char, 4096> resp;
+                ssize_t len = recv(sock, resp.data(), resp.size(), 0);
+                close(sock);
+
+                if (len >= NLMSG_LENGTH(0))
+                {
+                    const nlmsghdr* hdr =
+                        reinterpret_cast<nlmsghdr*>(resp.data());
+                    if (hdr->nlmsg_type == NLMSG_ERROR)
+                    {
+                        const nlmsgerr* err =
+                            reinterpret_cast<nlmsgerr*>(NLMSG_DATA(hdr));
+                        if (err->error != 0)
+                        {
+                            std::ostringstream oss;
+                            oss << "Failed to delete link-local IP on ifidx "
+                                << ifidx << ": " << strerror(-err->error);
+                            success = false;
+                            return;
+                        }
+                    }
+                }
+                success = true;
+            }
+        },
+        ip.getAddr());
+
+    return success;
 }
 
 } // namespace phosphor::network::system

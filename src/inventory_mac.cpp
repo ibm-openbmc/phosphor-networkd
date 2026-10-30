@@ -6,6 +6,7 @@
 #include "system_queries.hpp"
 #include "types.hpp"
 
+#include <net/if.h>
 #include <sys/inotify.h>
 #include <unistd.h>
 
@@ -304,8 +305,18 @@ bool configureInternalInterface(std::string_view internalInterface,
 
     try
     {
-        phosphor::network::system::setIPAddress(std::string(internalInterface),
-                                                ipAddress, prefixLength);
+        unsigned ifidx = if_nametoindex(std::string(internalInterface).c_str());
+        /* Flush ALL existing IPv4 addresses before applying the new one.
+         * deleteIPv4() issues RTM_DELADDR for every address via rtnetlink.
+         */
+        if (!phosphor::network::system::deleteIPv4(ifidx))
+        {
+            lg2::warning(
+                "Failed to flush IPv4 addresses on {INTF}, proceeding anyway",
+                "INTF", internalInterface);
+        }
+        phosphor::network::system::setIPV4Address(
+            std::string(internalInterface), ipAddress, prefixLength);
         return true;
     }
     catch (const std::exception& e)

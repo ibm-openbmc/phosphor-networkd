@@ -10,6 +10,8 @@
 
 #include <sdbusplus/bus.hpp>
 #include <sdbusplus/server/object.hpp>
+#include <sdeventplus/source/io.hpp>
+#include <stdplus/fd/managed.hpp>
 #include <stdplus/pinned.hpp>
 #include <stdplus/str/maps.hpp>
 #include <stdplus/zstring_view.hpp>
@@ -20,6 +22,8 @@
 #include <xyz/openbmc_project/Network/VLAN/server.hpp>
 #include <xyz/openbmc_project/Object/Delete/server.hpp>
 
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -118,6 +122,10 @@ class EthernetInterface : public Ifaces
     /** @brief Function used to load the nameservers.
      */
     void loadNameServers(const config::Parser& config);
+
+    /** @brief Function used to delete IPv4 static addresses
+     */
+    void deleteStaticIPv4Addresses();
 
     /** @brief Function to create ipAddress dbus object.
      *  @param[in] addressType - Type of ip address.
@@ -232,6 +240,9 @@ class EthernetInterface : public Ifaces
      */
     bool emitLLDP(bool value) override;
 
+    bool dhcpIsEnabled(IP::Protocol family, bool ignoreProtocol);
+    void disableDHCP(IP::Protocol protocol);
+
     using EthernetInterfaceIntf::interfaceName;
     using EthernetInterfaceIntf::linkUp;
     using EthernetInterfaceIntf::mtu;
@@ -279,10 +290,33 @@ class EthernetInterface : public Ifaces
     friend class TestNetworkManager;
 
   private:
+    struct NCSITimeoutWatch
+    {
+        NCSITimeoutWatch(EthernetInterface& intf, int fd);
+
+        void callback(sdeventplus::source::IO&, int, uint32_t);
+
+        EthernetInterface& intf;
+        sdeventplus::source::IO io;
+    };
+    std::unique_ptr<NCSITimeoutWatch> ncsiTimeoutWatch;
+
     EthernetInterface(stdplus::PinnedRef<sdbusplus::bus_t> bus,
                       stdplus::PinnedRef<Manager> manager,
                       const AllIntfInfo& info, std::string&& objPath,
                       const config::Parser& config, bool enabled);
+
+    int handleNCSITimeout();
+
+    bool isServiceActive(const std::string& serviceName);
+
+    int handleIpmiOnNCSITimeout(const std::string& intfName);
+
+    std::filesystem::path ncsiTimeoutPath;
+    std::filesystem::path ncsiWatchDriver;
+    std::string ncsiWatchDeviceName;
+
+    friend struct NCSITimeoutWatch;
 };
 
 } // namespace network

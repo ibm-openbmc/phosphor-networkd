@@ -23,6 +23,9 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <map>
+#include <variant>
+#include <vector>
 
 namespace phosphor
 {
@@ -199,11 +202,34 @@ void Manager::createInterface(const AllIntfInfo& info, bool enabled)
                    info.intf.idx);
         return;
     }
-    config::Parser config(config::pathForIntfConf(confDir, *info.intf.name));
+    auto confPath = config::pathForIntfConf(confDir, *info.intf.name);
+    config::Parser config;
+    std::error_code ec;
+    if (std::filesystem::exists(confPath, ec))
+    {
+        config.setFile(confPath);
+    }
+    else
+    {
+        // No per-interface config yet (first boot or post-factory-reset).
+        // Seed from the interface-specific default file if one exists so that
+        // the first writeConfigurationFile() preserves the intended defaults
+        // (e.g. DHCP=false for eth2) instead of using hardcoded fallbacks.
+        auto defaultPath =
+            std::filesystem::path("/usr/lib/systemd/network") /
+            stdplus::strCat("60-phosphor-networkd-"sv, *info.intf.name,
+                            "-default.network"sv);
+        if (std::filesystem::exists(defaultPath, ec))
+        {
+            config.setFile(defaultPath);
+        }
+    }
     auto intf = std::make_unique<EthernetInterface>(
         bus, *this, info, objPath.str, config, enabled);
     intf->loadNameServers(config);
     intf->loadNTPServers(config);
+    watchNTPServers();
+    watchTimeSyncActiveState();
     auto ptr = intf.get();
     interfaces.insert_or_assign(*info.intf.name, std::move(intf));
     interfacesByIdx.insert_or_assign(info.intf.idx, ptr);
@@ -560,6 +586,88 @@ void Manager::reloadLLDPService()
         lg2::error("Failed to restart service {SERVICE}: {ERR}", "SERVICE",
                    lldpService, "ERR", ex);
     }
+}
+
+void Manager::reloadNTPServers()
+{
+    for (const auto& [name, intf] : interfaces)
+    {
+        config::Parser config(
+            config::pathForIntfConf(getConfDir(), intf->interfaceName()));
+        intf->loadNTPServers(config);
+    }
+}
+
+void Manager::watchNTPServers()
+{
+    if (ntpServerMatch)
+    {
+        return;
+    }
+    ntpServerMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/timesync1',"
+        "arg0='org.freedesktop.timesync1.Manager'",
+        [this](sdbusplus::message_t& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::vector<std::string>>>
+                changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.timesync1.Manager")
+            {
+                auto it = changedProperties.find("LinkNTPServers");
+                if (it != changedProperties.end())
+                {
+                    lg2::info("NTP server ip updated in timesyncd");
+                    reloadNTPServers();
+                }
+            }
+        });
+}
+
+void Manager::watchTimeSyncActiveState()
+{
+    if (activeStateMatch)
+    {
+        return;
+    }
+    activeStateMatch = std::make_unique<sdbusplus::bus::match_t>(
+        bus,
+        "type='signal',member='PropertiesChanged',interface='org.freedesktop."
+        "DBus.Properties',path='/org/freedesktop/systemd1/unit/systemd_2dtimesyncd_2eservice',"
+        "arg0='org.freedesktop.systemd1.Unit'",
+        [this](sdbusplus::message_t& msg) {
+            if (msg.is_method_error())
+            {
+                return;
+            }
+
+            std::string interface;
+            std::map<std::string, std::variant<std::string>> changedProperties;
+            std::vector<std::string> invalidatedProperties;
+            msg.read(interface, changedProperties, invalidatedProperties);
+
+            if (interface == "org.freedesktop.systemd1.Unit")
+            {
+                auto it = changedProperties.find("ActiveState");
+                if (it != changedProperties.end())
+                {
+                    std::string activeState = std::get<std::string>(it->second);
+                    if (activeState == "active" || activeState == "inactive")
+                    {
+                        reloadNTPServers();
+                    }
+                }
+            }
+        });
 }
 
 } // namespace network
