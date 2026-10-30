@@ -271,7 +271,7 @@ TEST_F(TestSystemQueries, SetIPAddressSuccess)
     mock_addIF(InterfaceInfo{
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.100", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.100", 24));
 }
 
 TEST_F(TestSystemQueries, SetIPAddressInvalidIP)
@@ -279,18 +279,22 @@ TEST_F(TestSystemQueries, SetIPAddressInvalidIP)
     mock_addIF(InterfaceInfo{
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
-    EXPECT_THROW(setIPAddress("eth0", "invalid_ip", 24), std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "256.1.1.1", 24), std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1", 24), std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.1.1", 24),
+    EXPECT_THROW(setIPV4Address("eth0", "invalid_ip", 24),
                  std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.a", 24),
+    EXPECT_THROW(setIPV4Address("eth0", "256.1.1.1", 24),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1", 24),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.1.1", 24),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.a", 24),
                  std::invalid_argument);
 }
 
 TEST_F(TestSystemQueries, SetIPAddressNonExistentInterface)
 {
-    EXPECT_THROW(setIPAddress("eth99", "192.168.1.100", 24), std::system_error);
+    EXPECT_THROW(setIPV4Address("eth99", "192.168.1.100", 24),
+                 std::system_error);
 }
 
 TEST_F(TestSystemQueries, SetIPAddressEdgePrefixLengths)
@@ -299,16 +303,16 @@ TEST_F(TestSystemQueries, SetIPAddressEdgePrefixLengths)
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
     // /32 prefix (single host) - INVALID for interface assignment
-    EXPECT_THROW(setIPAddress("eth0", "10.0.0.1", 32), std::invalid_argument);
+    EXPECT_THROW(setIPV4Address("eth0", "10.0.0.1", 32), std::invalid_argument);
 
     // /0 prefix (default route netmask) - INVALID for interface assignment
-    EXPECT_THROW(setIPAddress("eth0", "10.0.0.1", 0), std::invalid_argument);
+    EXPECT_THROW(setIPV4Address("eth0", "10.0.0.1", 0), std::invalid_argument);
 
     // /1 prefix - VALID
-    EXPECT_NO_THROW(setIPAddress("eth0", "10.0.0.1", 1));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "10.0.0.1", 1));
 
     // /31 prefix (point-to-point) - VALID
-    EXPECT_NO_THROW(setIPAddress("eth0", "10.0.0.1", 31));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "10.0.0.1", 31));
 }
 
 TEST_F(TestSystemQueries, SetIPAddressInvalidPrefix)
@@ -316,11 +320,11 @@ TEST_F(TestSystemQueries, SetIPAddressInvalidPrefix)
     mock_addIF(InterfaceInfo{
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 33),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 33),
                  std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 50),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 50),
                  std::invalid_argument);
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 255),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 255),
                  std::invalid_argument);
 }
 
@@ -330,13 +334,13 @@ TEST_F(TestSystemQueries, SetIPAddressCommonPrefixes)
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
     // /8 (Class A)
-    EXPECT_NO_THROW(setIPAddress("eth0", "10.0.0.1", 8));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "10.0.0.1", 8));
 
     // /16 (Class B)
-    EXPECT_NO_THROW(setIPAddress("eth0", "172.16.0.1", 16));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "172.16.0.1", 16));
 
     // /24 (Class C)
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.1", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.1", 24));
 }
 
 TEST_F(TestSystemQueries, SetIPAddressMultipleInterfaces)
@@ -348,9 +352,9 @@ TEST_F(TestSystemQueries, SetIPAddressMultipleInterfaces)
     mock_addIF(InterfaceInfo{
         .type = 1, .idx = 3, .flags = 0, .name = "eth2", .mtu = 1500});
 
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.100", 24));
-    EXPECT_NO_THROW(setIPAddress("eth1", "192.168.2.100", 24));
-    EXPECT_NO_THROW(setIPAddress("eth2", "192.168.3.100", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.100", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth1", "192.168.2.100", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth2", "192.168.3.100", 24));
 }
 
 TEST_F(TestSystemQueries, SetIPAddressAllValidPrefixes)
@@ -361,25 +365,25 @@ TEST_F(TestSystemQueries, SetIPAddressAllValidPrefixes)
     // Test valid prefix lengths (1-31)
     for (uint8_t prefix = 1; prefix <= 31; ++prefix)
     {
-        EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.100", prefix))
+        EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.100", prefix))
             << "Failed for prefix /" << static_cast<int>(prefix);
     }
 
     // Test invalid prefix lengths (0, 32, 33)
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 0),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 0),
                  std::invalid_argument)
         << "Should throw for prefix /0";
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 32),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 32),
                  std::invalid_argument)
         << "Should throw for prefix /32";
-    EXPECT_THROW(setIPAddress("eth0", "192.168.1.100", 33),
+    EXPECT_THROW(setIPV4Address("eth0", "192.168.1.100", 33),
                  std::invalid_argument)
         << "Should throw for prefix /33";
 }
 
 TEST_F(TestSystemQueries, SetIPAddressEmptyInterface)
 {
-    EXPECT_THROW(setIPAddress("", "192.168.1.100", 24), std::system_error);
+    EXPECT_THROW(setIPV4Address("", "192.168.1.100", 24), std::system_error);
 }
 
 TEST_F(TestSystemQueries, SetIPAddressMultipleTimes)
@@ -388,10 +392,89 @@ TEST_F(TestSystemQueries, SetIPAddressMultipleTimes)
         .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
 
     // Set IP multiple times (should overwrite)
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.100", 24));
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.101", 24));
-    EXPECT_NO_THROW(setIPAddress("eth0", "192.168.1.102", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.100", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.101", 24));
+    EXPECT_NO_THROW(setIPV4Address("eth0", "192.168.1.102", 24));
 }
+
+TEST_F(TestSystemQueries, SetIPV6AddressSuccess)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_NO_THROW(setIPV6Address("eth0", "2001:db8::1", 64));
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressInvalidIP)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_THROW(setIPV6Address("eth0", "invalid_ip", 64),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV6Address("eth0", "2001:db8::xyz", 64),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV6Address("eth0", "192.168.1.1", 64),
+                 std::invalid_argument);
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressNonExistentInterface)
+{
+    EXPECT_THROW(setIPV6Address("eth99", "2001:db8::1", 64), std::system_error);
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressEmptyInterface)
+{
+    EXPECT_THROW(setIPV6Address("", "2001:db8::1", 64), std::system_error);
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressInvalidPrefixZero)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_THROW(setIPV6Address("eth0", "2001:db8::1", 0),
+                 std::invalid_argument);
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressInvalidPrefixOver128)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_THROW(setIPV6Address("eth0", "2001:db8::1", 129),
+                 std::invalid_argument);
+    EXPECT_THROW(setIPV6Address("eth0", "2001:db8::1", 255),
+                 std::invalid_argument);
+}
+
+TEST_F(TestSystemQueries, SetIPV6AddressValidEdgePrefixes)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_NO_THROW(setIPV6Address("eth0", "2001:db8::1", 1));
+    EXPECT_NO_THROW(setIPV6Address("eth0", "2001:db8::1", 64));
+    EXPECT_NO_THROW(setIPV6Address("eth0", "2001:db8::1", 128));
+}
+
+TEST_F(TestSystemQueries, DeleteIPv4OnEmptyInterfaceSucceeds)
+{
+    // Interface exists but has no addresses — flush must still succeed
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_TRUE(deleteIPv4(1));
+}
+
+TEST_F(TestSystemQueries, DeleteIPv6OnEmptyInterfaceSucceeds)
+{
+    mock_addIF(InterfaceInfo{
+        .type = 1, .idx = 1, .flags = 0, .name = "eth0", .mtu = 1500});
+
+    EXPECT_TRUE(deleteIPv6(1));
+}
+
 } // namespace system
 } // namespace network
 } // namespace phosphor
