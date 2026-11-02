@@ -57,7 +57,7 @@ static bool parseLLDPEnabledFromConfig(const std::string& ifname)
             std::string status = tokens[5];
             if (status == "disabled")
                 return false;
-            if (status == "tx-only" || status == "tx-and-rx" ||
+            if (status == "tx-only" || status == "rx-and-tx" ||
                 status == "rx-only")
                 return true;
         }
@@ -141,7 +141,7 @@ bool Interface::enableLLDP(bool value)
 std::string Interface::buildLLDPStatusCommand(bool enable) const
 {
     return "configure ports " + ifname + " lldp status " +
-           (enable ? "tx-and-rx" : "disabled");
+           (enable ? "rx-and-tx" : "disabled");
 }
 
 void Interface::updateInterfaceLLDPConfig(bool enable)
@@ -185,7 +185,7 @@ void Interface::updateInterfaceLLDPConfig(bool enable)
         outFile << l << "\n";
 
     lg2::info("Updated LLDP config for interface {IF}: {STATE}", "IF", ifname,
-              "STATE", (enable ? "tx-and-rx" : "disabled"));
+              "STATE", (enable ? "rx-and-tx" : "disabled"));
     reloadLLDPService();
 }
 
