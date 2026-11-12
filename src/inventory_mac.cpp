@@ -245,7 +245,12 @@ static std::optional<uint64_t> readPositionFromFile()
     }
 
     uint64_t filePosition = 0;
-    posFile >> filePosition;
+    if (!(posFile >> filePosition))
+    {
+        lg2::error("Position file {FILE_PATH} has no valid number", "FILE_PATH",
+                   positionFilePath);
+        return std::nullopt;
+    }
     posFile.close();
 
     if (filePosition == 0 || filePosition == 1)
@@ -444,64 +449,41 @@ class InotifyWatcher
 };
 
 std::unique_ptr<InotifyWatcher> positionWatcher = nullptr;
-static int fallbackWd = -1;
 
 void onPositionFileEvent(std::string_view filename)
 {
     if (filename == "openbmc")
     {
-        if (assignIPBasedOnPosition())
-        {
-            lg2::info(
-                "Position IP assigned successfully, unregistering inotify watcher");
-            positionWatcher.reset();
-            return;
-        }
-        lg2::info("Switching inotify watch to {DIR}", "DIR", positionDir);
-        if (fallbackWd >= 0)
-        {
-            positionWatcher->removeWatch(fallbackWd);
-            fallbackWd = -1;
-        }
+        lg2::info("Adding inotify watch on {DIR}", "DIR", positionDir);
         positionWatcher->addWatch(positionDir, IN_CLOSE_WRITE | IN_MOVED_TO);
+        assignIPBasedOnPosition();
     }
     else if (filename == "bmc_position")
     {
         lg2::info("Position file event detected ({NAME})", "NAME", filename);
-        if (assignIPBasedOnPosition())
-        {
-            lg2::info(
-                "Position IP assigned successfully, unregistering inotify watcher");
-            positionWatcher.reset();
-        }
+        assignIPBasedOnPosition();
     }
 }
 
 void watchBMCPosition()
 {
-    if (assignIPBasedOnPosition())
-    {
-        lg2::info("Position file found on startup and IP assigned");
-        return;
-    }
-
     auto event = sdeventplus::Event::get_default();
     std::error_code ec;
 
+    // Always watch fallbackDir for the creation of positionDir
+    positionWatcher =
+        std::make_unique<InotifyWatcher>(event, onPositionFileEvent);
+    positionWatcher->addWatch(fallbackDir, IN_CREATE | IN_ISDIR);
+
+    // If positionDir already exists, watch it for writes to the position file.
     if (std::filesystem::exists(positionDir, ec))
     {
-        positionWatcher = std::make_unique<InotifyWatcher>(
-            event, positionDir, IN_CLOSE_WRITE | IN_MOVED_TO,
-            onPositionFileEvent);
+        positionWatcher->addWatch(positionDir, IN_CLOSE_WRITE | IN_MOVED_TO);
     }
-    else
+
+    if (assignIPBasedOnPosition())
     {
-        lg2::info("Registered inotify watcher on {DIR} waiting for {SUBDIR}",
-                  "DIR", fallbackDir, "SUBDIR", positionDir);
-        positionWatcher =
-            std::make_unique<InotifyWatcher>(event, onPositionFileEvent);
-        fallbackWd =
-            positionWatcher->addWatch(fallbackDir, IN_CREATE | IN_ISDIR);
+        lg2::info("Position file found on startup and IP assigned");
     }
 }
 #endif
